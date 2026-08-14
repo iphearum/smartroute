@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Map View{% endblock %}
+
+{% block content %}
+<h2>Route Visualization</h2>
+
+{% if start_id is not none and end_id is not none %}
+<div id="map" style="height: 600px; border: 2px solid steelblue;"></div>
+
+<script>
+  const startId = {{ start_id }};
+  const endId = {{ end_id }};
+  const apiUrl = `/route?start_id=${startId}&end_id=${endId}`;
+
+  fetch(apiUrl)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.geometry || data.geometry.length === 0) {
+        alert("No route geometry found for the given IDs.");
+        return;
+      }
+
+      // Convert geometry [lon, lat] → [lat, lon]
+      const latlngs = data.geometry.map(coord => [coord[1], coord[0]]);
+
+      const map = L.map('map').setView(latlngs[0], 16);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+
+      const polyline = L.polyline(latlngs, { color: 'blue' }).addTo(map);
+      map.fitBounds(polyline.getBounds());
+
+      L.marker(latlngs[0]).addTo(map).bindPopup("Start").openPopup();
+      L.marker(latlngs[latlngs.length - 1]).addTo(map).bindPopup("End");
+    })
+    .catch(err => {
+      console.error("Error fetching route:", err);
+      alert("Could not load route data.");
+    });
+</script>
+
+{% else %}
+<p style="color: red;">⚠️ Please provide both <code>start_id</code> and <code>end_id</code> in the URL as query parameters.<br>
+Example: <code>/map?start_id=123&end_id=456</code></p>
+{% endif %}
+{% endblock %}

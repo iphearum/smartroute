@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Find Route | MyApp{% endblock %}
+
+{% block content %}
+<h2>Find Route Between Two Coordinates</h2>
+<form method="POST" action="/full_temp_route">
+    <fieldset>
+        <legend>Source Coordinates:</legend>
+        <label for="source_lat">Latitude:</label>
+        <input type="text" id="source_lat" name="s_lat" required><br><br>
+
+        <label for="source_lon">Longitude:</label>
+        <input type="text" id="source_lon" name="s_lon" required><br><br>
+    </fieldset>
+
+    <fieldset>
+        <legend>Destination Coordinates:</legend>
+        <label for="dest_lat">Latitude:</label>
+        <input type="text" id="dest_lat" name="d_lat" required><br><br>
+
+        <label for="dest_lon">Longitude:</label>
+        <input type="text" id="dest_lon" name="d_lon" required><br><br>
+    </fieldset>
+
+    <button type="submit">Get Route</button>
+</form>
+{% endblock %}

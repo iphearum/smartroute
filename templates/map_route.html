@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fastest Route</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
+    <style>
+        #map {
+            height: 90vh;
+            width: 100%;
+            border: 2px solid royalblue;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Fastest Route</h2>
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script>
+    // List of [lon, lat] points
+    const geometry = {{ geometry | tojson }};
+
+    // ✅ Convert [lon, lat] → [lat, lon]
+    const latlngs = geometry.map(coord => [coord[0], coord[1]]);
+
+    const map = L.map('map').setView(latlngs[0], 14);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const polyline = L.polyline(latlngs, {
+        color: 'blue',
+        weight: 5,
+        opacity: 0.8
+    }).addTo(map);
+
+    L.marker(latlngs[0]).addTo(map).bindPopup("Start").openPopup();
+    L.marker(latlngs[latlngs.length - 1]).addTo(map).bindPopup("End");
+
+    map.fitBounds(polyline.getBounds());
+</script>
+
+</body>
+</html>
