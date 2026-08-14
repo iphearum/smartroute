@@ -1,10 +1,10 @@
-# SmartRoutePP
+# SmartRoute
 
-SmartRoutePP is a FastAPI map and routing application for Phnom Penh. It supports
+SmartRoute is a FastAPI map and routing application for Phnom Penh. It supports
 location search, map pins, multiple destinations, travel modes, recommended routes,
 Google Maps link imports, and custom map updates.
 
-![SmartRoutePP demo](images/demo.png)
+![SmartRoute demo](images/demo.png)
 
 ## Install
 
