@@ -256,7 +256,9 @@ async def calculate_coordinate_routes(app, payload: CoordinateRouteRequest, on_g
             )
             legs.append([source_id, dest_id])
             leg_snaps.append(snap)
-        routes = engine.route_legs_options(legs, payload.mode, payload.traffic, 3)
+        # Return the recommended route immediately. Alternative discovery is
+        # intentionally handled by /route/suggestions outside the critical path.
+        routes = engine.route_legs_options(legs, payload.mode, payload.traffic, 1)
         for route in routes:
             connected_geometry, connectors = [], []
             for index, leg_geometry in enumerate(route.pop("leg_geometries", [])):

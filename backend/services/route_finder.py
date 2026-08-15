@@ -177,12 +177,41 @@ class RouterEngine:
                 adjacency[edge["target"]].append((edge["source"], cost, edge))
         return adjacency
 
+    @lru_cache(maxsize=16)
+    def _mode_heuristic_scale(self, mode, traffic):
+        """Return the smallest observed seconds-per-metre ratio for this profile."""
+        minimum_ratio = math.inf
+        for edge in self.graph_data.get("links", []):
+            if not self._edge_allowed(edge, mode):
+                continue
+            source, target = edge.get("source"), edge.get("target")
+            if source not in self.nodes or target not in self.nodes:
+                continue
+            straight = self._geodesic(source, target)
+            if straight > 0:
+                minimum_ratio = min(
+                    minimum_ratio,
+                    self._travel_seconds(edge, mode, traffic) / straight,
+                )
+        return 0.0 if minimum_ratio == math.inf else minimum_ratio
+
+    def _mode_heuristic(self, node_id, target_id, mode, traffic):
+        return self._geodesic(node_id, target_id) * self._mode_heuristic_scale(mode, traffic)
+
+    @lru_cache(maxsize=4096)
+    def _cached_mode_search(self, start, target, mode, traffic):
+        path, duration = self._mode_search(start, target, mode, traffic)
+        return tuple(path), duration
+
     def _mode_search(self, start, target, mode, traffic, banned_edges=frozenset()):
+        """Run profile-aware A*; banned edges are used only for bounded alternatives."""
+        if start not in self.nodes or target not in self.nodes:
+            raise ValueError("Start or destination node not found in graph")
         adjacency = self._mode_adjacency(mode, traffic)
         distances, previous = {start: 0.0}, {}
-        heap = [(0.0, start)]
+        heap = [(self._mode_heuristic(start, target, mode, traffic), 0.0, start)]
         while heap:
-            current_cost, current = heapq.heappop(heap)
+            _, current_cost, current = heapq.heappop(heap)
             if current_cost != distances.get(current):
                 continue
             if current == target:
@@ -194,7 +223,10 @@ class RouterEngine:
                 if candidate < distances.get(neighbor, math.inf):
                     distances[neighbor] = candidate
                     previous[neighbor] = current
-                    heapq.heappush(heap, (candidate, neighbor))
+                    priority = candidate + self._mode_heuristic(
+                        neighbor, target, mode, traffic
+                    )
+                    heapq.heappush(heap, (priority, candidate, neighbor))
         path = self.reconstruct_path(previous, start, target)
         return path, distances[target]
 
@@ -202,11 +234,16 @@ class RouterEngine:
         """Return a fastest route plus distinct detours suitable for congestion."""
         if start_id not in self.nodes or end_id not in self.nodes:
             raise ValueError("Start or destination node not found in graph")
-        best_path, best_duration = self._mode_search(start_id, end_id, mode, traffic)
+        best_path, best_duration = self._cached_mode_search(
+            start_id, end_id, mode, traffic
+        )
+        best_path = list(best_path)
         candidates = {(tuple(best_path), best_duration)}
         path_edges = list(zip(best_path, best_path[1:]))
-        # A representative sample bounds worst-case work on long routes.
-        stride = max(1, math.ceil(len(path_edges) / 24))
+        # Keep alternatives bounded: the recommended route stays fast even on
+        # country-scale graphs, while background suggestions explore a few detours.
+        alternative_search_budget = 8
+        stride = max(1, math.ceil(len(path_edges) / alternative_search_budget))
         requested_limit = max(1, min(limit, 5))
         if requested_limit > 1:
             for edge in path_edges[::stride]:
