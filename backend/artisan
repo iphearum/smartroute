@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""SmartRoute backend command runner with Laravel-inspired command names."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+BACKEND_DIR = Path(__file__).resolve().parent
+TORTOISE_CONFIG = "services.settings.TORTOISE_ORM"
+APP_LABEL = "models"
+
+
+def tortoise(*arguments: str) -> int:
+    command = [sys.executable, "-m", "tortoise", "-c", TORTOISE_CONFIG, *arguments]
+    return subprocess.run(command, cwd=BACKEND_DIR, check=False).returncode
+
+
+def script(module: str, arguments: list[str]) -> int:
+    command = [sys.executable, "-m", module, *arguments]
+    return subprocess.run(command, cwd=BACKEND_DIR, check=False).returncode
+
+
+def add_regions(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--regions", nargs="+", metavar="PROVINCE")
+
+
+def add_workers(parser: argparse.ArgumentParser, default: int = 2) -> None:
+    parser.add_argument("--workers", type=int, default=default)
+
+
+def migration_arguments(action: str, target: str | None, dry_run: bool, fake: bool) -> list[str]:
+    arguments = [action]
+    if target:
+        arguments.extend((APP_LABEL, target))
+    if dry_run:
+        arguments.append("--dry-run")
+    if fake:
+        arguments.append("--fake")
+    return arguments
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="artisan", description="SmartRoute backend management commands"
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    migrate = commands.add_parser("migrate", help="Apply pending database migrations")
+    migrate.add_argument("migration", nargs="?", help="Optional migration name to stop at")
+    migrate.add_argument("--dry-run", action="store_true")
+    migrate.add_argument("--fake", action="store_true")
+
+    rollback = commands.add_parser(
+        "migrate:rollback", aliases=["rollback"], help="Roll back exactly one latest migration"
+    )
+    rollback.add_argument("migration", nargs="?", help="Optional latest recorder ID or name")
+    rollback.add_argument("--dry-run", action="store_true")
+    rollback.add_argument("--fake", action="store_true")
+
+    make = commands.add_parser("make:migration", help="Generate a migration from model changes")
+    make.add_argument("name", nargs="?", help="Descriptive migration name")
+    make.add_argument("--empty", action="store_true", help="Generate an empty migration")
+
+    commands.add_parser("migrate:status", help="List applied database migrations")
+    commands.add_parser("migrate:heads", help="List the latest migration on disk")
+
+    sql = commands.add_parser("migrate:sql", help="Print SQL for a migration")
+    sql.add_argument("migration", help="Migration name")
+    sql.add_argument("--rollback", action="store_true", help="Print rollback SQL")
+
+    convert = commands.add_parser("map:convert-pbf", help="Convert local Cambodia PBF to GraphML")
+    convert.add_argument("--pbf")
+    add_regions(convert)
+    add_workers(convert)
+    convert.add_argument("--network-type", choices=("drive", "bike", "walk", "all"),
+                         default="drive")
+    convert.add_argument("--force", action="store_true")
+    convert.add_argument("--no-progress", action="store_true")
+
+    download = commands.add_parser("map:download", help="Download province road graphs via OSMnx")
+    add_regions(download)
+    add_workers(download)
+    download.add_argument("--network-type", choices=("drive", "bike", "walk", "all"),
+                          default="drive")
+    download.add_argument("--force", action="store_true")
+    download.add_argument("--no-progress", action="store_true")
+
+    places = commands.add_parser("places:fetch", help="Fetch and upsert province POIs via Overpass")
+    add_regions(places)
+    add_workers(places)
+    places.add_argument("--no-progress", action="store_true")
+
+    seed = commands.add_parser("features:seed", help="Upsert local PBF features into the database")
+    seed.add_argument("--pbf")
+    add_regions(seed)
+    add_workers(seed)
+    seed.add_argument("--types", nargs="+", choices=("buildings", "pois", "boundaries",
+                                                      "landuse", "natural"))
+    seed.add_argument("--batch-size", type=int, default=500)
+    seed.add_argument("--no-progress", action="store_true")
+
+    buildings = commands.add_parser("buildings:seed", help="Upsert buildings from the local PBF")
+    buildings.add_argument("--pbf")
+    add_regions(buildings)
+    add_workers(buildings)
+    buildings.add_argument("--batch-size", type=int, default=500)
+    buildings.add_argument("--no-progress", action="store_true")
+
+    local_places = commands.add_parser("places:seed", help="Upsert POIs from the local PBF")
+    local_places.add_argument("--pbf")
+    add_regions(local_places)
+    add_workers(local_places)
+    local_places.add_argument("--batch-size", type=int, default=500)
+    local_places.add_argument("--no-progress", action="store_true")
+
+    db_seed = commands.add_parser("db:seed", help="Seed all supported local PBF feature layers")
+    db_seed.add_argument("--pbf")
+    add_regions(db_seed)
+    add_workers(db_seed)
+    db_seed.add_argument("--batch-size", type=int, default=500)
+    db_seed.add_argument("--no-progress", action="store_true")
+
+    translations = commands.add_parser(
+        "translations:sync", help="Fill English and country-local OSM feature names"
+    )
+    add_regions(translations)
+    translations.add_argument("--batch-size", type=int, default=250)
+    translations.add_argument("--force", action="store_true")
+    translations.add_argument("--no-progress", action="store_true")
+
+    asset = commands.add_parser("3d:asset", help="Register a georeferenced GLB/GLTF model")
+    asset.add_argument("name")
+    asset.add_argument("model_url")
+    asset.add_argument("latitude")
+    asset.add_argument("longitude")
+    asset.add_argument("--country", default="cambodia")
+    asset.add_argument("--province", default="phnom_penh")
+    asset.add_argument("--altitude", default="0")
+    asset.add_argument("--rotation-x", default="90")
+    asset.add_argument("--rotation-y", default="0")
+    asset.add_argument("--rotation-z", default="0")
+    asset.add_argument("--scale", default="1")
+
+    fresh = commands.add_parser(
+        "db:fresh", help="Drop every database table and reapply all migrations"
+    )
+    fresh.add_argument("--force", action="store_true", help="Skip interactive confirmation")
+    return parser
+
+
+def main() -> int:
+    os.chdir(BACKEND_DIR)
+    args = build_parser().parse_args()
+
+    if args.command == "migrate":
+        return tortoise(*migration_arguments(
+            "migrate", args.migration, args.dry_run, args.fake
+        ))
+    if args.command in {"migrate:rollback", "rollback"}:
+        arguments = [args.migration] if args.migration else []
+        if args.dry_run:
+            arguments.append("--dry-run")
+        if args.fake:
+            arguments.append("--fake")
+        return script("scripts.rollback_latest_migration", arguments)
+    if args.command == "make:migration":
+        arguments = ["makemigrations", APP_LABEL]
+        if args.name:
+            arguments.extend(("--name", args.name))
+        if args.empty:
+            arguments.append("--empty")
+        return tortoise(*arguments)
+    if args.command == "migrate:status":
+        return tortoise("history", APP_LABEL)
+    if args.command == "migrate:heads":
+        return tortoise("heads", APP_LABEL)
+    if args.command == "migrate:sql":
+        arguments = ["sqlmigrate", APP_LABEL, args.migration]
+        if args.rollback:
+            arguments.append("--backward")
+        return tortoise(*arguments)
+    if args.command in {"map:convert-pbf", "map:download", "places:fetch",
+                        "features:seed", "buildings:seed", "places:seed", "db:seed"}:
+        arguments: list[str] = []
+        if getattr(args, "pbf", None):
+            arguments.extend(("--pbf", args.pbf))
+        if args.regions:
+            arguments.extend(("--regions", *args.regions))
+        arguments.extend(("--workers", str(args.workers)))
+        if getattr(args, "network_type", None):
+            arguments.extend(("--network-type", args.network_type))
+        if getattr(args, "force", False):
+            arguments.append("--force")
+        if getattr(args, "batch_size", None):
+            arguments.extend(("--batch-size", str(args.batch_size)))
+        if getattr(args, "no_progress", False):
+            arguments.append("--no-progress")
+        if args.command == "features:seed" and args.types:
+            arguments.extend(("--types", *args.types))
+        if args.command == "buildings:seed":
+            arguments.extend(("--types", "buildings"))
+        if args.command == "places:seed":
+            arguments.extend(("--types", "pois"))
+        modules = {
+            "map:convert-pbf": "scripts.convert_cambodia_pbf",
+            "map:download": "scripts.download_cambodia_maps",
+            "places:fetch": "scripts.import_cambodia_places",
+            "features:seed": "scripts.seed_cambodia_features",
+            "buildings:seed": "scripts.seed_cambodia_features",
+            "places:seed": "scripts.seed_cambodia_features",
+            "db:seed": "scripts.seed_cambodia_features",
+        }
+        return script(modules[args.command], arguments)
+    if args.command == "translations:sync":
+        arguments = []
+        if args.regions:
+            arguments.extend(("--regions", *args.regions))
+        arguments.extend(("--batch-size", str(args.batch_size)))
+        if args.force:
+            arguments.append("--force")
+        if args.no_progress:
+            arguments.append("--no-progress")
+        return script("scripts.sync_translations", arguments)
+    if args.command == "3d:asset":
+        arguments = [args.name, args.model_url, args.latitude, args.longitude,
+                     "--country", args.country, "--province", args.province,
+                     "--altitude", args.altitude, "--rotation-x", args.rotation_x,
+                     "--rotation-y", args.rotation_y, "--rotation-z", args.rotation_z,
+                     "--scale", args.scale]
+        return script("scripts.register_3d_asset", arguments)
+    if args.command == "db:fresh":
+        if not args.force:
+            answer = input("Drop every table in the configured database? Type 'yes' to continue: ")
+            if answer.strip().casefold() != "yes":
+                print("Database reset cancelled.")
+                return 1
+        result = script("scripts.reset_database", [])
+        return result if result else tortoise("migrate")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
