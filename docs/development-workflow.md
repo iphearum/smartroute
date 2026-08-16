@@ -39,6 +39,12 @@ The bottom navigation and map guidance pill are mutually exclusive state surface
 
 The map remains the primary full-screen canvas and interface surfaces form a responsive HUD grid above it. On wide screens, the route search and category strip share the top row. The category strip is not an enclosing toolbar: each category is an independent liquid pill directly above the map, without duplicate product branding or location status. Below 900px, the horizontally scrollable strip stacks beneath the search surface. Route search results and directions replace content below the search rather than creating a separate competing column. Leaflet controls own the right edge, while navigation owns the bottom slot.
 
+The root document has no painted background or overscroll surface, and the workspace uses the dynamic viewport height without a fixed minimum height. This keeps the map flush with short mobile viewports instead of exposing a page-colored band. Mobile safe areas are enabled with `viewport-fit=cover`.
+
+## Progressive web app
+
+The frontend publishes `/manifest.webmanifest` from `frontend/src/app/manifest.ts`, registers `frontend/public/sw.js` from the root layout, and provides 192px, 512px, and Apple touch icons under `frontend/public/icons/`. Installed launches use standalone display mode and a translucent iOS status bar so the map remains the primary full-screen canvas. The service worker caches only the application shell and same-origin static assets; API calls and third-party map tiles remain network-managed so geographic data does not become stale unexpectedly.
+
 ## Shared application state
 
 `frontend/src/app/layout.tsx` is the root composition owner and mounts `AppShellProvider` from `frontend/src/shared/state/app-shell-context.tsx`. The provider creates a scoped Zustand vanilla store for cross-feature UI state: navigation selection, dock collapse, POI filters, language preference, and Place Data modal visibility. Components consume individual state slices through selector calls such as `useAppShell((state) => state.language)`; do not subscribe to the entire store, duplicate shared state locally, or coordinate it through window events. The scoped provider prevents state leakage between layout trees, and the layout remains a server component so Next.js metadata exports continue to work.

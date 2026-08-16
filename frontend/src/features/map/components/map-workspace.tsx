@@ -36,7 +36,7 @@ export function MapWorkspace() {
     openPlaceData = useAppShell((state) => state.openPlaceData);
   return (
     <main
-      className={`map-workspace relative h-dvh min-h-[620px] overflow-hidden ${sidebarCollapsed ? "" : "has-bottom-nav"}`}
+      className={`map-workspace relative h-dvh min-h-0 overflow-hidden ${sidebarCollapsed ? "" : "has-bottom-nav"}`}
       lang={language}
     >
       <MapCanvas poiFilters={poiFilters} language={language} />

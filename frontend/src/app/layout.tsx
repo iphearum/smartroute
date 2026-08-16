@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { AppShellProvider } from "@/shared/state/app-shell-context";
+import { PwaRegistration } from "@/shared/pwa/pwa-registration";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
@@ -14,12 +15,33 @@ export const metadata: Metadata = {
   },
   description: appDescription,
   applicationName: appName,
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: appName,
+  },
+  icons: {
+    icon: [
+      { url: "/icons/pwa-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/pwa-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
   openGraph: {
     title: appName,
     description: appDescription,
     type: "website",
   },
 };
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#e8efeb",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -29,6 +51,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <AppShellProvider>{children}</AppShellProvider>
+        <PwaRegistration />
       </body>
     </html>
   );

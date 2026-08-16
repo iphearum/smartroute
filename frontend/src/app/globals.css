@@ -66,11 +66,12 @@ html,
 body {
   height: 100%;
   margin: 0;
+  background: transparent;
+  overscroll-behavior: none;
 }
 body {
   font-family: Manrope, Arial, "Noto Sans Khmer", sans-serif;
   color: var(--ink);
-  background: #e8efebde;
 }
 .leaflet-container {
   height: 100%;
