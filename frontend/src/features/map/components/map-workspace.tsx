@@ -9,6 +9,7 @@ import {
 import { Icon, type IconName } from "@/shared/ui/icon";
 import { LiquidSwitch } from "@/shared/ui/liquid";
 import { MapCanvas } from "./map-canvas";
+import { MapActionControls } from "./map-action-controls";
 
 const railItems: { icon: IconName; label: AppNavSection }[] = [
   { icon: "home", label: "Explore" },
@@ -36,10 +37,11 @@ export function MapWorkspace() {
     openPlaceData = useAppShell((state) => state.openPlaceData);
   return (
     <main
-      className={`map-workspace relative h-dvh min-h-0 overflow-hidden ${sidebarCollapsed ? "" : "has-bottom-nav"}`}
+      className={`map-workspace fixed inset-0 overflow-hidden ${sidebarCollapsed ? "" : "has-bottom-nav"}`}
       lang={language}
     >
       <MapCanvas poiFilters={poiFilters} language={language} />
+      <MapActionControls />
       <nav
         className={`desktop-rail liquid-card liquid-dock absolute z-[800] ${sidebarCollapsed ? "dock-hidden" : ""}`}
         aria-label="Primary navigation"

@@ -95,15 +95,36 @@ export function RoutePanel({
     setActivePoint(index);
   };
   const useLocation = () =>
-    navigator.geolocation?.getCurrentPosition((position) =>
-      choose(
-        {
-          name: "Your location",
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        },
-        activePoint,
-      ),
+    navigator.geolocation?.getCurrentPosition(
+      (position) => {
+        choose(
+          {
+            name: "Your location",
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          },
+          activePoint,
+        );
+        window.dispatchEvent(
+          new CustomEvent("smartroute:show-current-location", {
+            detail: {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+            },
+          }),
+        );
+      },
+      (error) =>
+        window.dispatchEvent(
+          new CustomEvent("smartroute:location-error", {
+            detail:
+              error.code === error.PERMISSION_DENIED
+                ? "Location access was denied. Allow it in device Settings, then try again."
+                : "Your current location is unavailable. Check Location Services.",
+          }),
+        ),
+      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 60_000 },
     );
   const recalculate = () => {
     const ready = readyCoordinates();

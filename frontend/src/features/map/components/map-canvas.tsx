@@ -160,6 +160,7 @@ export function MapCanvas({
     leaflet = useRef<typeof LType | null>(null),
     map = useRef<LType.Map | null>(null),
     routeLayers = useRef<LType.Layer[]>([]),
+    currentLocationLayers = useRef<LType.Layer[]>([]),
     markers = useRef<LType.Marker[]>([]),
     poiLayers = useRef<LType.Marker[]>([]),
     loadedPlacesBounds = useRef<LType.LatLngBounds | null>(null);
@@ -188,6 +189,76 @@ export function MapCanvas({
     window.addEventListener("smartroute:focus-coordinate", focus);
     return () =>
       window.removeEventListener("smartroute:focus-coordinate", focus);
+  }, []);
+  useEffect(() => {
+    const showCurrentLocation = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          latitude: number;
+          longitude: number;
+          accuracy?: number;
+        }>
+      ).detail;
+      const currentMap = map.current,
+        L = leaflet.current;
+      if (
+        !currentMap ||
+        !L ||
+        !Number.isFinite(detail?.latitude) ||
+        !Number.isFinite(detail?.longitude)
+      )
+        return;
+
+      currentLocationLayers.current.forEach((layer) => layer.remove());
+      const position = L.latLng(detail.latitude, detail.longitude),
+        accuracy = Number.isFinite(detail.accuracy)
+          ? Math.max(0, detail.accuracy || 0)
+          : 0,
+        layers: LType.Layer[] = [];
+
+      if (accuracy > 0)
+        layers.push(
+          L.circle(position, {
+            radius: accuracy,
+            color: "#087f5b",
+            weight: 1,
+            opacity: 0.32,
+            fillColor: "#10b981",
+            fillOpacity: 0.1,
+            interactive: false,
+          }).addTo(currentMap),
+        );
+
+      layers.push(
+        L.circleMarker(position, {
+          radius: 8,
+          color: "#ffffff",
+          weight: 3,
+          fillColor: "#087f5b",
+          fillOpacity: 1,
+        })
+          .bindTooltip("Your location", { direction: "top", offset: [0, -8] })
+          .addTo(currentMap),
+      );
+      currentLocationLayers.current = layers;
+      currentMap.flyTo(position, Math.max(currentMap.getZoom(), 17), {
+        duration: 0.6,
+      });
+    };
+    window.addEventListener(
+      "smartroute:show-current-location",
+      showCurrentLocation,
+    );
+    return () =>
+      window.removeEventListener(
+        "smartroute:show-current-location",
+        showCurrentLocation,
+      );
+  }, []);
+  useEffect(() => {
+    const reset = () => map.current?.setView([11.5564, 104.9282], 13);
+    window.addEventListener("smartroute:reset-map-view", reset);
+    return () => window.removeEventListener("smartroute:reset-map-view", reset);
   }, []);
   useEffect(() => {
     let active = true;
