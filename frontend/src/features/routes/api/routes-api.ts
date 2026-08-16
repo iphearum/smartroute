@@ -1,7 +1,47 @@
-import {api} from "@/shared/api/http";import type {Coordinate,CoordinateRouteResponse,Place,TrafficProfile,TravelMode} from "../domain/types";
-import type {Geometry} from "geojson";
-import {calculateRouteRealtime} from "./route-socket";
-export interface ViewportFeature{id:number;feature_type:string;name?:string|null;name_base?:string|null;geometry:Geometry;height_m?:number;min_height_m?:number;tags:Record<string,unknown>}
-export interface ThreeDAsset{id:number;name:string;model_url:string;latitude:number;longitude:number;altitude:number;rotation_x:number;rotation_y:number;rotation_z:number;scale:number;metadata:Record<string,unknown>}
-export const viewportThreeDAssets=(bounds:{south:number;west:number;north:number;east:number},limit=100,signal?:AbortSignal)=>api<ThreeDAsset[]>(`/maps/data/viewport/3d-assets?country=cambodia&south=${bounds.south}&west=${bounds.west}&north=${bounds.north}&east=${bounds.east}&limit=${limit}`,{signal});
-export const routesApi={search:(query:string,limit=6)=>api<{results:Place[]}>(`/location/search?q=${encodeURIComponent(query)}&limit=${limit}`),nearest:(coordinate:Coordinate)=>api<{name:string;latitude:number;longitude:number}>(`/location/nearest?lat=${coordinate[0]}&lon=${coordinate[1]}`),places:(limit=100)=>api<Place[]>(`/maps/cambodia/phnom_penh/places?limit=${limit}`),viewportPlaces:(bounds:{south:number;west:number;north:number;east:number},limit=500,signal?:AbortSignal)=>api<Place[]>(`/maps/data/viewport/places?country=cambodia&south=${bounds.south}&west=${bounds.west}&north=${bounds.north}&east=${bounds.east}&limit=${limit}`,{signal}),viewportFeatures:(bounds:{south:number;west:number;north:number;east:number},types:string[],limit=2000,signal?:AbortSignal)=>api<ViewportFeature[]>(`/maps/data/viewport/features?country=cambodia&south=${bounds.south}&west=${bounds.west}&north=${bounds.north}&east=${bounds.east}&types=${types.join(",")}&limit=${limit}`,{signal}),calculate:async(coordinates:Coordinate[],mode:TravelMode,traffic:TrafficProfile,progress?:(message:string)=>void)=>{try{return await calculateRouteRealtime(coordinates,mode,traffic,progress)}catch{return api<CoordinateRouteResponse>("/route/by-coordinates",{method:"POST",body:JSON.stringify({coordinates,mode,traffic})})}},importPlaces:(query:string)=>api<{id:string}>("/maps/cambodia/phnom_penh/places/import-osm",{method:"POST",body:JSON.stringify({query})}),importStatus:(id:string)=>api<Record<string,number|string>>(`/maps/cambodia/phnom_penh/places/import-osm/${encodeURIComponent(id)}`)};
+import { api } from "@/shared/api/http";
+import type {
+  Coordinate,
+  CoordinateRouteResponse,
+  Place,
+  TrafficProfile,
+  TravelMode,
+} from "../domain/types";
+export const routesApi = {
+  search: (query: string, limit = 6) =>
+    api<{ results: Place[] }>(
+      `/location/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+    ),
+  nearest: (coordinate: Coordinate) =>
+    api<{ name: string; latitude: number; longitude: number }>(
+      `/location/nearest?lat=${coordinate[0]}&lon=${coordinate[1]}`,
+    ),
+  places: (limit = 100) =>
+    api<Place[]>(`/maps/cambodia/phnom_penh/places?limit=${limit}`),
+  viewportPlaces: (
+    bounds: { south: number; west: number; north: number; east: number },
+    limit = 500,
+    signal?: AbortSignal,
+  ) =>
+    api<Place[]>(
+      `/maps/data/viewport/places?country=cambodia&south=${bounds.south}&west=${bounds.west}&north=${bounds.north}&east=${bounds.east}&limit=${limit}`,
+      { signal },
+    ),
+  calculate: (
+    coordinates: Coordinate[],
+    mode: TravelMode,
+    traffic: TrafficProfile,
+  ) =>
+    api<CoordinateRouteResponse>("/route/by-coordinates", {
+      method: "POST",
+      body: JSON.stringify({ coordinates, mode, traffic }),
+    }),
+  importPlaces: (query: string) =>
+    api<{ id: string }>("/maps/cambodia/phnom_penh/places/import-osm", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
+  importStatus: (id: string) =>
+    api<Record<string, number | string>>(
+      `/maps/cambodia/phnom_penh/places/import-osm/${encodeURIComponent(id)}`,
+    ),
+};

@@ -88,6 +88,26 @@ def test_mode_routes_and_ordered_stops(graph_data):
     assert via[0]["leg_geometries"][0][0] == [104.0, 11.0]
 
 
+def test_mode_astar_matches_zero_heuristic_with_unusual_speed_limit():
+    graph = {
+        "directed": True,
+        "nodes": [
+            {"id": 1, "x": 104.0, "y": 11.0},
+            {"id": 2, "x": 104.01, "y": 11.0},
+            {"id": 3, "x": 104.02, "y": 11.0},
+        ],
+        "links": [
+            {"source": 1, "target": 3, "length": 4000, "maxspeed": "40"},
+            {"source": 1, "target": 2, "length": 2000, "maxspeed": "300"},
+            {"source": 2, "target": 3, "length": 2000, "maxspeed": "300"},
+        ],
+    }
+    engine = RouterEngine(graph)
+    path, duration = engine._mode_search(1, 3, "car", "normal")
+    assert path == [1, 2, 3]
+    assert duration == pytest.approx(48.0)
+
+
 def test_local_location_search(graph_data):
     results = RouterEngine(graph_data).search_locations("Monivong")
     assert results[0]["name"] == "Monivong Boulevard"

@@ -163,6 +163,86 @@ class RouterEngine:
             raise ValueError("Traffic must be normal or heavy")
         return self._weight(edge) / (speed * 1000 / 3600) * factor
 
+    @staticmethod
+    def _bearing(source, target):
+        """Return a compass bearing between two graph nodes."""
+        lat1, lat2 = math.radians(float(source["y"])), math.radians(float(target["y"]))
+        delta_lon = math.radians(float(target["x"]) - float(source["x"]))
+        y = math.sin(delta_lon) * math.cos(lat2)
+        x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(delta_lon)
+        return (math.degrees(math.atan2(y, x)) + 360) % 360
+
+    @staticmethod
+    def _maneuver(previous_bearing, next_bearing):
+        delta = (next_bearing - previous_bearing + 540) % 360 - 180
+        amount = abs(delta)
+        if amount < 20:
+            return "continue"
+        if amount < 50:
+            return "slight-right" if delta > 0 else "slight-left"
+        if amount < 150:
+            return "turn-right" if delta > 0 else "turn-left"
+        return "u-turn"
+
+    def get_route_steps(self, path, mode="motorbike", traffic="normal"):
+        """Build compact street-level directions from the edges in a path."""
+        pairs = list(zip(path, path[1:]))
+        if not pairs:
+            return []
+        raw = []
+        for u, v in pairs:
+            edge = self.edges.get((u, v))
+            source, target = self.nodes.get(u), self.nodes.get(v)
+            if not edge or not source or not target:
+                continue
+            name = self._clean_name(edge.get("name")) or "Unnamed road"
+            raw.append({
+                "name": name,
+                "distance": self._weight(edge),
+                "duration": self._travel_seconds(edge, mode, traffic),
+                "bearing": self._bearing(source, target),
+                "coordinate": [float(source["x"]), float(source["y"])],
+            })
+        if not raw:
+            return []
+
+        groups = []
+        for edge in raw:
+            if groups and groups[-1]["name"] == edge["name"]:
+                groups[-1]["distance"] += edge["distance"]
+                groups[-1]["duration"] += edge["duration"]
+                groups[-1]["exit_bearing"] = edge["bearing"]
+            else:
+                groups.append({**edge, "exit_bearing": edge["bearing"]})
+
+        steps = []
+        for index, group in enumerate(groups):
+            maneuver = "depart" if index == 0 else self._maneuver(
+                groups[index - 1]["exit_bearing"], group["bearing"]
+            )
+            verb = {
+                "depart": "Head onto", "continue": "Continue on",
+                "slight-left": "Slight left onto", "slight-right": "Slight right onto",
+                "turn-left": "Turn left onto", "turn-right": "Turn right onto",
+                "u-turn": "Make a U-turn onto",
+            }[maneuver]
+            steps.append({
+                "type": maneuver,
+                "instruction": f'{verb} {group["name"]}',
+                "street_name": group["name"],
+                "distance": group["distance"],
+                "duration": group["duration"],
+                "coordinate": group["coordinate"],
+            })
+        destination = self.nodes.get(path[-1])
+        if destination:
+            steps.append({
+                "type": "arrive", "instruction": "Arrive at your destination",
+                "distance": 0, "duration": 0,
+                "coordinate": [float(destination["x"]), float(destination["y"])],
+            })
+        return steps
+
     @lru_cache(maxsize=16)
     def _mode_adjacency(self, mode, traffic):
         adjacency = {node_id: [] for node_id in self.nodes}
@@ -177,12 +257,34 @@ class RouterEngine:
                 adjacency[edge["target"]].append((edge["source"], cost, edge))
         return adjacency
 
+    @lru_cache(maxsize=16)
+    def _mode_heuristic_scale(self, mode, traffic):
+        """Return a lower bound of travel seconds per straight-line metre.
+
+        Deriving the bound from the actual eligible edges keeps A* admissible
+        for imported roads with unusual speed limits and for custom edges.
+        """
+        minimum_ratio = math.inf
+        for source, neighbors in self._mode_adjacency(mode, traffic).items():
+            for target, cost, _ in neighbors:
+                straight = self._geodesic(source, target)
+                if straight > 0:
+                    minimum_ratio = min(minimum_ratio, cost / straight)
+        return 0.0 if minimum_ratio == math.inf else minimum_ratio
+
     def _mode_search(self, start, target, mode, traffic, banned_edges=frozenset()):
+        """Run A* with an admissible travel-time heuristic."""
         adjacency = self._mode_adjacency(mode, traffic)
         distances, previous = {start: 0.0}, {}
-        heap = [(0.0, start)]
+        heuristic_scale = self._mode_heuristic_scale(mode, traffic)
+
+        def heuristic(node_id):
+            return self._geodesic(node_id, target) * heuristic_scale
+
+        sequence = 0
+        heap = [(heuristic(start), 0.0, sequence, start)]
         while heap:
-            current_cost, current = heapq.heappop(heap)
+            _, current_cost, _, current = heapq.heappop(heap)
             if current_cost != distances.get(current):
                 continue
             if current == target:
@@ -194,7 +296,10 @@ class RouterEngine:
                 if candidate < distances.get(neighbor, math.inf):
                     distances[neighbor] = candidate
                     previous[neighbor] = current
-                    heapq.heappush(heap, (candidate, neighbor))
+                    sequence += 1
+                    heapq.heappush(
+                        heap, (candidate + heuristic(neighbor), candidate, sequence, neighbor)
+                    )
         path = self.reconstruct_path(previous, start, target)
         return path, distances[target]
 
@@ -205,11 +310,21 @@ class RouterEngine:
         best_path, best_duration = self._mode_search(start_id, end_id, mode, traffic)
         candidates = {(tuple(best_path), best_duration)}
         path_edges = list(zip(best_path, best_path[1:]))
-        # A representative sample bounds worst-case work on long routes.
-        stride = max(1, math.ceil(len(path_edges) / 24))
         requested_limit = max(1, min(limit, 5))
         if requested_limit > 1:
-            for edge in path_edges[::stride]:
+            # Alternative discovery is the expensive part of routing. Sample
+            # only enough edges to find the requested number of detours rather
+            # than running A* up to 24 extra times on every leg.
+            sample_limit = min(len(path_edges), 6 * (requested_limit - 1))
+            if sample_limit:
+                sample_indices = {
+                    round(index * (len(path_edges) - 1) / max(1, sample_limit - 1))
+                    for index in range(sample_limit)
+                }
+            else:
+                sample_indices = set()
+            for edge_index in sorted(sample_indices):
+                edge = path_edges[edge_index]
                 try:
                     path, duration = self._mode_search(start_id, end_id, mode, traffic, frozenset({edge}))
                 except ValueError:
@@ -235,6 +350,7 @@ class RouterEngine:
                                          else "Alternative if conditions change",
                 "start": {"node_id": start_id, "name": self.location_name(start_id)},
                 "destination": {"node_id": end_id, "name": self.location_name(end_id)},
+                "steps": self.get_route_steps(path, mode, traffic),
             })
         return options
 
@@ -275,13 +391,19 @@ class RouterEngine:
 
         routes = []
         for choice in combinations:
-            geometry, leg_geometries, path, length, duration = [], [], [], 0.0, 0.0
+            geometry, leg_geometries, path, steps, length, duration = [], [], [], [], 0.0, 0.0
             for leg_index, option_index in enumerate(choice):
                 option = leg_options[leg_index][option_index]
                 leg_geometry, leg_path = option["geometry"], option["path"]
                 leg_geometries.append(leg_geometry)
                 geometry.extend(leg_geometry[1:] if geometry and leg_geometry else leg_geometry)
                 path.extend(leg_path[1:] if path and leg_path else leg_path)
+                leg_steps = option.get("steps", [])
+                if leg_index < len(choice) - 1:
+                    leg_steps = [step for step in leg_steps if step["type"] != "arrive"]
+                if leg_index > 0:
+                    leg_steps = [step for step in leg_steps if step["type"] != "depart"]
+                steps.extend(leg_steps)
                 length += option["length"]
                 duration += option["duration"]
             routes.append({
@@ -295,6 +417,7 @@ class RouterEngine:
                 "mode": mode,
                 "traffic": traffic,
                 "legs": [list(leg) for leg in legs],
+                "steps": steps,
             })
         routes.sort(key=lambda route: route["duration"])
         fastest_duration = routes[0]["duration"]

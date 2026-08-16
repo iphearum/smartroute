@@ -106,7 +106,7 @@ def convert_province(pbf_path: Path, slug: str, polygon: Any,
         edges,
         graph_type="networkx",
         network_type=pyrosm_type,
-        retain_all=False,
+        retain_all=True,
         osmnx_compatible=True,
         simplify=True,
     )

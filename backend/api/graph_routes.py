@@ -6,8 +6,8 @@ import secrets
 import asyncio
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field, ValidationError
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from pydantic import BaseModel, Field
 from requests import RequestException
 from networkx.readwrite import json_graph
 from shapely.geometry import LineString
@@ -244,11 +244,7 @@ async def calculate_coordinate_routes(app, payload: CoordinateRouteRequest, on_g
     """Load the relevant province and calculate routes without blocking the event loop."""
     if any(not (-90 <= lat <= 90 and -180 <= lon <= 180) for lat, lon in payload.coordinates):
         raise ValueError("Invalid latitude or longitude")
-    _, engine, helper, province = await app.state.graph_service_loader(payload.coordinates)
-    if on_graph_ready is not None:
-        await on_graph_ready(province)
-
-    def calculate():
+    def calculate(engine, helper, province):
         legs, leg_snaps = [], []
         for (s_lat, s_lon), (d_lat, d_lon) in zip(payload.coordinates, payload.coordinates[1:]):
             source_id, dest_id, _, snap = _coordinate_route(
@@ -285,32 +281,26 @@ async def calculate_coordinate_routes(app, payload: CoordinateRouteRequest, on_g
         return {"routes": routes, "recommended_rank": routes[0]["rank"],
                 "route_legs": legs, "province": province}
 
-    return await asyncio.to_thread(calculate)
-
-
-@router.websocket("/ws/routes")
-async def route_socket(websocket: WebSocket):
-    """Persistent route channel with progress events and per-request correlation IDs."""
-    await websocket.accept()
-    try:
-        while True:
-            message = await websocket.receive_json()
-            request_id = str(message.get("request_id") or secrets.token_urlsafe(8))
-            try:
-                payload = CoordinateRouteRequest.model_validate(message)
-                await websocket.send_json({"type": "map_loading", "request_id": request_id})
-                async def graph_ready(province):
-                    await websocket.send_json({"type": "route_calculating",
-                                               "request_id": request_id, "province": province})
-                result = await calculate_coordinate_routes(websocket.app, payload, graph_ready)
-                await websocket.send_json({"type": "route_ready", "request_id": request_id,
-                                           "data": result})
-            except (HTTPException, RuntimeError, ValueError, ValidationError) as exc:
-                detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-                await websocket.send_json({"type": "error", "request_id": request_id,
-                                           "message": detail})
-    except WebSocketDisconnect:
-        return
+    last_error = None
+    notified = False
+    for scope_padding_km in (5,):
+        try:
+            _, engine, helper, province = await app.state.graph_service_loader(
+                payload.coordinates, scope_padding_km=scope_padding_km
+            )
+            if on_graph_ready is not None and not notified:
+                await on_graph_ready(province)
+                notified = True
+            return await asyncio.to_thread(calculate, engine, helper, province)
+        except HTTPException as exc:
+            if exc.status_code != 400:
+                raise
+            last_error = exc
+        except ValueError as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise ValueError("No connected route was found")
 
 
 @router.post("/route/suggestions", status_code=202)

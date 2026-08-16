@@ -1,2 +1,37 @@
-"use client";import {useEffect,useRef,useState} from "react";import {routesApi} from "@/features/routes/api/routes-api";import type {Place} from "@/features/routes/domain/types";
-export function usePlaceSearch(query:string){const [results,setResults]=useState<Place[]>([]),[loading,setLoading]=useState(false),version=useRef(0);useEffect(()=>{const value=query.trim(),current=++version.current,timer=setTimeout(()=>{if(value.length<2){setResults([]);setLoading(false);return}setLoading(true);routesApi.search(value).then(data=>{if(current===version.current)setResults(data.results)}).catch(()=>{if(current===version.current)setResults([])}).finally(()=>{if(current===version.current)setLoading(false)})},value.length<2?0:220);return()=>clearTimeout(timer)},[query]);return{results,loading}}
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { routesApi } from "@/features/routes/api/routes-api";
+import type { Place } from "@/features/routes/domain/types";
+export function usePlaceSearch(query: string) {
+  const [results, setResults] = useState<Place[]>([]),
+    [loading, setLoading] = useState(false),
+    version = useRef(0);
+  useEffect(() => {
+    const value = query.trim(),
+      current = ++version.current,
+      timer = setTimeout(
+        () => {
+          if (value.length < 2) {
+            setResults([]);
+            setLoading(false);
+            return;
+          }
+          setLoading(true);
+          routesApi
+            .search(value)
+            .then((data) => {
+              if (current === version.current) setResults(data.results);
+            })
+            .catch(() => {
+              if (current === version.current) setResults([]);
+            })
+            .finally(() => {
+              if (current === version.current) setLoading(false);
+            });
+        },
+        value.length < 2 ? 0 : 220,
+      );
+    return () => clearTimeout(timer);
+  }, [query]);
+  return { results, loading };
+}

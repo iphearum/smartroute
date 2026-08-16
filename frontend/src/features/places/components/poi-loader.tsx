@@ -1,2 +1,70 @@
-"use client";import {useState} from "react";import {usePoiImport} from "../hooks/use-poi-import";
-export function PoiLoader(){const [open,setOpen]=useState(false),[query,setQuery]=useState("Phnom Penh, Cambodia"),{state,start,running}=usePoiImport();return <><button onClick={()=>setOpen(true)} className="absolute right-5 top-5 z-[700] rounded-full bg-white px-4 py-2 text-xs font-bold text-emerald-700 shadow-lg">Place data</button>{open&&<div className="absolute inset-0 z-[1000] grid place-items-center bg-slate-950/40 p-4"><section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><div className="flex justify-between"><div><p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">OpenStreetMap</p><h2 className="mt-1 text-xl font-bold">Load place information</h2></div><button onClick={()=>setOpen(false)} className="h-8 w-8 rounded-full bg-slate-100 text-xl">×</button></div><p className="my-4 text-xs leading-5 text-slate-500">Download searchable shops, restaurants, hotels, hospitals, attractions, addresses, and contact details into PostgreSQL.</p><label className="text-xs font-bold">City or area</label><div className="mt-2 flex gap-2"><input value={query} onChange={event=>setQuery(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-emerald-600"/><button disabled={running||query.trim().length<2} onClick={()=>void start(query.trim())} className="rounded-xl bg-emerald-700 px-4 py-3 text-xs font-bold text-white disabled:opacity-50">Load</button></div>{state.status!=="idle"&&<div className="mt-4 rounded-xl bg-emerald-50 p-3 text-xs"><strong>{state.message}</strong>{state.found!==undefined&&<p className="mt-1 text-slate-500">{state.found} found · {state.created} created · {state.updated} updated</p>}</div>}</section></div>}</>}
+"use client";
+import { useState } from "react";
+import { usePoiImport } from "../hooks/use-poi-import";
+export function PoiLoader() {
+  const [open, setOpen] = useState(false),
+    [query, setQuery] = useState("Phnom Penh, Cambodia"),
+    { state, start, running } = usePoiImport();
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="absolute right-5 top-5 z-[700] rounded-full bg-white px-4 py-2 text-xs font-bold text-emerald-700 shadow-lg"
+      >
+        Place data
+      </button>
+      {open && (
+        <div className="absolute inset-0 z-[1000] grid place-items-center bg-slate-950/40 p-4">
+          <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+                  OpenStreetMap
+                </p>
+                <h2 className="mt-1 text-xl font-bold">
+                  Load place information
+                </h2>
+              </div>
+              <button
+                onClick={() => setOpen(false)}
+                className="h-8 w-8 rounded-full bg-slate-100 text-xl"
+              >
+                ×
+              </button>
+            </div>
+            <p className="my-4 text-xs leading-5 text-slate-500">
+              Download searchable shops, restaurants, hotels, hospitals,
+              attractions, addresses, and contact details into PostgreSQL.
+            </p>
+            <label className="text-xs font-bold">City or area</label>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-sm outline-emerald-600"
+              />
+              <button
+                disabled={running || query.trim().length < 2}
+                onClick={() => void start(query.trim())}
+                className="rounded-xl bg-emerald-700 px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
+              >
+                Load
+              </button>
+            </div>
+            {state.status !== "idle" && (
+              <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-xs">
+                <strong>{state.message}</strong>
+                {state.found !== undefined && (
+                  <p className="mt-1 text-slate-500">
+                    {state.found} found · {state.created} created ·{" "}
+                    {state.updated} updated
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+    </>
+  );
+}

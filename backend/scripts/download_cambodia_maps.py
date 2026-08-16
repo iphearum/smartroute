@@ -30,7 +30,7 @@ def download_graph(slug: str, display_name: str, network_type: str, force: bool)
     try:
         graph = overpass_call(
             lambda: ox.graph_from_polygon(
-                polygon, network_type=network_type, simplify=True, retain_all=False
+                polygon, network_type=network_type, simplify=True, retain_all=True
             ),
             f"road network for {display_name}",
         )

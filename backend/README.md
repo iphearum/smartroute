@@ -99,6 +99,8 @@ python artisan map:convert-pbf \
   --network-type drive \
   --workers 2 \
   --force
+
+python artisan map:convert-pbf --regions phnom_penh --network-type drive --workers 1 --force --no-progress
 ```
 
 Supported network types are `drive`, `bike`, `walk`, and `all`. Pyrosm reads
