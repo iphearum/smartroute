@@ -78,8 +78,13 @@ function poiCard(place: Place, onAdd: () => void) {
     metadata = place.metadata || {},
     appearance = poiAppearance(place),
     card = document.createElement("article"),
+    media = document.createElement("div"),
+    marker = document.createElement("span"),
     fallback = document.createElement("div");
   card.className = `poi-preview poi-${appearance.key}`;
+  media.className = "poi-preview-media";
+  marker.className = "poi-preview-marker";
+  marker.innerHTML = appearance.icon;
   fallback.className = "poi-preview-fallback";
   fallback.innerHTML = appearance.icon;
   const imageValue = poiImageUrl(metadata);
@@ -91,18 +96,35 @@ function poiCard(place: Place, onAdd: () => void) {
     image.loading = "lazy";
     image.referrerPolicy = "no-referrer";
     image.addEventListener("error", () => image.replaceWith(fallback));
-    card.append(image);
-  } else card.append(fallback);
+    media.append(image);
+  } else media.append(fallback);
+  media.append(marker);
+  card.append(media);
   const body = document.createElement("div"),
     heading = document.createElement("div"),
     title = document.createElement("strong"),
-    category = document.createElement("span");
+    category = document.createElement("span"),
+    favorite = document.createElement("button");
   body.className = "poi-preview-body";
   heading.className = "poi-preview-heading";
   title.textContent = displayName;
   category.textContent = (place.category || "Place").replaceAll("_", " ");
-  heading.append(title, category);
-  body.append(heading);
+  favorite.className = "poi-preview-favorite";
+  favorite.type = "button";
+  favorite.setAttribute("aria-label", `Save ${displayName}`);
+  favorite.setAttribute("aria-pressed", "false");
+  favorite.innerHTML =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/></svg>';
+  favorite.addEventListener("click", () => {
+    const pressed = favorite.getAttribute("aria-pressed") !== "true";
+    favorite.setAttribute("aria-pressed", String(pressed));
+    favorite.setAttribute(
+      "aria-label",
+      `${pressed ? "Remove" : "Save"} ${displayName}${pressed ? " from saved places" : ""}`,
+    );
+  });
+  heading.append(title, favorite);
+  body.append(heading, category);
   if (place.address) {
     const address = document.createElement("p");
     address.textContent = place.address;
@@ -118,7 +140,7 @@ function poiCard(place: Place, onAdd: () => void) {
     source = document.createElement("small"),
     button = document.createElement("button");
   footer.className = "poi-preview-footer";
-  source.textContent = "OpenStreetMap";
+  source.textContent = "PsarAI place";
   button.type = "button";
   button.textContent = "＋ Add stop";
   button.addEventListener("click", onAdd);
@@ -176,14 +198,14 @@ export function MapCanvas({
         [11.5564, 104.9282],
         13,
       );
+      map.current.attributionControl.setPrefix(false);
       L.control.zoom({ position: "bottomright" }).addTo(map.current);
       L.tileLayer(
         "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
         {
           subdomains: "abcd",
           maxZoom: 20,
-          attribution:
-            '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+          attribution: "PsarAI Platform. (Cambodia)",
         },
       ).addTo(map.current);
       map.current.on("click", async (event) => {
@@ -359,25 +381,28 @@ export function MapCanvas({
           className: `poi-name-tooltip poi-${appearance.key}`,
         });
         let closeTimer: ReturnType<typeof setTimeout> | undefined;
-        marker.bindPopup(() => {
-          const card = poiCard(place, () => {
-            const state = useRouteStore.getState();
-            state.setPoint(state.activePoint, place);
-            const latest = useRouteStore.getState(),
-              ready = latest.coordinates.filter(Boolean) as Coordinate[];
-            if (ready.length === latest.coordinates.length)
-              void calculate(ready);
-            marker.closePopup();
-          });
-          L.DomEvent.disableClickPropagation(card);
-          return card;
-        }, {
-          className: "poi-popup",
-          closeButton: false,
-          offset: [0, -10],
-          maxWidth: 320,
-          minWidth: 300,
-        });
+        marker.bindPopup(
+          () => {
+            const card = poiCard(place, () => {
+              const state = useRouteStore.getState();
+              state.setPoint(state.activePoint, place);
+              const latest = useRouteStore.getState(),
+                ready = latest.coordinates.filter(Boolean) as Coordinate[];
+              if (ready.length === latest.coordinates.length)
+                void calculate(ready);
+              marker.closePopup();
+            });
+            L.DomEvent.disableClickPropagation(card);
+            return card;
+          },
+          {
+            className: "poi-popup",
+            closeButton: false,
+            offset: [0, -10],
+            maxWidth: 320,
+            minWidth: 300,
+          },
+        );
         marker.on("mouseover", () => {
           if (closeTimer) clearTimeout(closeTimer);
           marker.openPopup();
@@ -478,15 +503,13 @@ export function MapCanvas({
           ? route.segments.map((segment) => segment.geometry)
           : [route.geometry];
       geometries.forEach((geometry) => {
-        const points = geometry.map(
-          ([lon, lat]) => [lat, lon] as Coordinate,
-        );
+        const points = geometry.map(([lon, lat]) => [lat, lon] as Coordinate);
         if (points.length < 2) return;
         const outline = L.polyline(points, {
-          color: "white",
-          weight: active ? 11 : 7,
-          opacity: 0.9,
-        }).addTo(currentMap),
+            color: "white",
+            weight: active ? 11 : 7,
+            opacity: 0.9,
+          }).addTo(currentMap),
           line = L.polyline(points, {
             color: active ? "#087f5b" : "#6475dc",
             weight: active ? 7 : 4,

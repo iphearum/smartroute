@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AppShellProvider } from "@/shared/state/app-shell-context";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
@@ -26,7 +27,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AppShellProvider>{children}</AppShellProvider>
+      </body>
     </html>
   );
 }

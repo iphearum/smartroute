@@ -6,3 +6,7 @@ frontend/*.tsbuildinf
 
 backend/maps/*
 backend/.venv
+
+psarui
+translator
+.vscode

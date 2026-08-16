@@ -6,7 +6,7 @@ const buildCpus = Number.isInteger(requestedBuildCpus)
   : 20;
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["127.0.0.1", "localhost", '::1'],
+  allowedDevOrigins: ["127.0.0.1", 'psarai.com', '192.168.51.100', "localhost", '::1'],
   // Keep four of the host's 24 cores available for the OS and other services.
   // Set NEXT_BUILD_CPUS=1 if a constrained build host needs a safe fallback.
   experimental: {

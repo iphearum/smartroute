@@ -1,32 +1,28 @@
 "use client";
 import { useState } from "react";
+import { useAppShell } from "@/shared/state/app-shell-context";
 import { usePoiImport } from "../hooks/use-poi-import";
 export function PoiLoader() {
-  const [open, setOpen] = useState(false),
-    [query, setQuery] = useState("Phnom Penh, Cambodia"),
+  const placeDataOpen = useAppShell((state) => state.placeDataOpen),
+    closePlaceData = useAppShell((state) => state.closePlaceData);
+  const [query, setQuery] = useState("Phnom Penh, Cambodia"),
     { state, start, running } = usePoiImport();
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="absolute right-5 top-5 z-[700] rounded-full bg-white px-4 py-2 text-xs font-bold text-emerald-700 shadow-lg"
-      >
-        Place data
-      </button>
-      {open && (
+      {placeDataOpen && (
         <div className="absolute inset-0 z-[1000] grid place-items-center bg-slate-950/40 p-4">
-          <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <section className="liquid-popover w-full max-w-md rounded-[26px] p-6">
             <div className="flex justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
-                  OpenStreetMap
+                  PsarAI
                 </p>
                 <h2 className="mt-1 text-xl font-bold">
                   Load place information
                 </h2>
               </div>
               <button
-                onClick={() => setOpen(false)}
+                onClick={closePlaceData}
                 className="h-8 w-8 rounded-full bg-slate-100 text-xl"
               >
                 ×
