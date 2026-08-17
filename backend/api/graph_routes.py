@@ -13,6 +13,7 @@ from networkx.readwrite import json_graph
 from shapely.geometry import LineString
 
 from services.graph_helper import GraphHelper
+from services.graphhopper import GraphHopperError
 from services.route_finder import RouterEngine
 from services.google_maps import parse_google_maps_place, parse_google_maps_route
 
@@ -25,7 +26,7 @@ class GoogleMapsRouteImport(BaseModel):
 
 class CoordinateRouteRequest(BaseModel):
     coordinates: list[tuple[float, float]] = Field(min_length=2, max_length=7)
-    mode: Literal["car", "motorbike", "bike", "walk"] = "motorbike"
+    mode: Literal["car", "motorbike", "bike", "walk", "combind"] = "motorbike"
     traffic: Literal["normal", "heavy"] = "normal"
 
 
@@ -236,71 +237,27 @@ def recommended_route(
 async def route_by_coordinates(request: Request, payload: CoordinateRouteRequest):
     try:
         return await calculate_coordinate_routes(request.app, payload)
-    except (RuntimeError, ValueError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 async def calculate_coordinate_routes(app, payload: CoordinateRouteRequest, on_graph_ready=None):
-    """Load the relevant province and calculate routes without blocking the event loop."""
+    """Calculate a multi-stop route in the Java GraphHopper service."""
     if any(not (-90 <= lat <= 90 and -180 <= lon <= 180) for lat, lon in payload.coordinates):
         raise ValueError("Invalid latitude or longitude")
-    def calculate(engine, helper, province):
-        legs, leg_snaps = [], []
-        for (s_lat, s_lon), (d_lat, d_lon) in zip(payload.coordinates, payload.coordinates[1:]):
-            source_id, dest_id, _, snap = _coordinate_route(
-                helper, engine, s_lat, s_lon, d_lat, d_lon
-            )
-            legs.append([source_id, dest_id])
-            leg_snaps.append(snap)
-        routes = engine.route_legs_options(legs, payload.mode, payload.traffic, 3)
-        for route in routes:
-            connected_geometry, connectors = [], []
-            for index, leg_geometry in enumerate(route.pop("leg_geometries", [])):
-                start_lat, start_lon = payload.coordinates[index]
-                end_lat, end_lon = payload.coordinates[index + 1]
-                snap = leg_snaps[index]
-                if not leg_geometry:
-                    continue
-                leg_geometry = [*snap["source_road"], *leg_geometry, *snap["destination_road"]]
-                if snap["source_snap_distance"] > 8:
-                    connectors.append([[start_lon, start_lat], snap["source_point"]])
-                if snap["destination_snap_distance"] > 8:
-                    connectors.append([snap["destination_point"], [end_lon, end_lat]])
-                if connected_geometry and leg_geometry[0] == connected_geometry[-1]:
-                    leg_geometry = leg_geometry[1:]
-                connected_geometry.extend(leg_geometry)
-            if connected_geometry:
-                route["geometry"] = connected_geometry
-                route["segments"] = [{"type": "road", "geometry": connected_geometry}]
-            route["connectors"] = connectors
-            route["length"] += sum(
-                snap["source_partial_length"] + snap["destination_partial_length"]
-                + snap["source_snap_distance"] + snap["destination_snap_distance"]
-                for snap in leg_snaps
-            )
-        return {"routes": routes, "recommended_rank": routes[0]["rank"],
-                "route_legs": legs, "province": province}
-
-    last_error = None
-    notified = False
-    for scope_padding_km in (5,):
-        try:
-            _, engine, helper, province = await app.state.graph_service_loader(
-                payload.coordinates, scope_padding_km=scope_padding_km
-            )
-            if on_graph_ready is not None and not notified:
-                await on_graph_ready(province)
-                notified = True
-            return await asyncio.to_thread(calculate, engine, helper, province)
-        except HTTPException as exc:
-            if exc.status_code != 400:
-                raise
-            last_error = exc
-        except ValueError as exc:
-            last_error = exc
-    if last_error is not None:
-        raise last_error
-    raise ValueError("No connected route was found")
+    client = getattr(app.state, "graphhopper", None)
+    if client is None:
+        raise RuntimeError("GraphHopper routing service is not configured")
+    try:
+        result = await asyncio.to_thread(
+            client.route, payload.coordinates, payload.mode, payload.traffic, 3
+        )
+    except GraphHopperError as exc:
+        raise RuntimeError(str(exc)) from exc
+    result["province"] = "Cambodia"
+    return result
 
 
 @router.post("/route/suggestions", status_code=202)
@@ -371,20 +328,15 @@ def route_via(
 
 @router.get("/location/nearest")
 async def nearest_location(request: Request, lat: float, lon: float):
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise HTTPException(status_code=400, detail="Invalid latitude or longitude")
+    client = getattr(request.app.state, "graphhopper", None)
+    if client is None:
+        raise HTTPException(status_code=503, detail="GraphHopper routing service is not configured")
     try:
-        _, engine, helper, province = await request.app.state.graph_service_loader([(lat, lon)])
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    node_id = helper.closest_node(lat, lon)
-    if node_id is None:
-        raise HTTPException(status_code=404, detail="The map contains no nodes")
-    return {
-        "node_id": node_id,
-        "name": engine.location_name(node_id),
-        "province": province,
-        **helper.get_point_from_node_id(node_id),
-        **helper.distance_to_the_point(lat, lon),
-    }
+        return await asyncio.to_thread(client.nearest, lat, lon)
+    except GraphHopperError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/location/search")
@@ -396,23 +348,22 @@ async def search_locations(request: Request, q: str, limit: int = 8):
     if map_store and region and len(q.strip()) >= 2:
         for place in await map_store.search_places(*region, q, limit):
             results.append({**place, "node_id": None, "source": "custom_place"})
-    remaining = limit - len(results)
-    if remaining > 0:
-        results.extend(_state(request, "router_engine").search_locations(q, remaining))
     return {"query": q, "results": results}
 
 
 @router.get("/map/summary")
-def map_summary(request: Request):
-    data = _state(request, "graph_data")
-    engine = _state(request, "router_engine")
+async def map_summary(request: Request):
+    client = getattr(request.app.state, "graphhopper", None)
+    if client is None:
+        raise HTTPException(status_code=503, detail="GraphHopper routing service is not configured")
+    try:
+        info = await asyncio.to_thread(client.info)
+    except GraphHopperError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {
-        "nodes": len(data.get("nodes", [])),
-        "edges": len(data.get("links", [])),
-        "directed": data.get("directed", True),
-        "sources": getattr(request.app.state, "graph_sources", []),
-        "route_cache": engine._cached_route.cache_info()._asdict(),
-        "location_cache": _state(request, "graph_helper").closest_node.cache_info()._asdict(),
+        "provider": "graphhopper",
+        "source": getattr(request.app.state, "routing_source", None),
+        "service": info,
     }
 
 

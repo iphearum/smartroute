@@ -1,5 +1,5 @@
 export type Coordinate = [latitude: number, longitude: number];
-export type TravelMode = "car" | "motorbike" | "bike" | "walk";
+export type TravelMode = "car" | "motorbike" | "bike" | "walk" | "combind";
 export type TrafficProfile = "normal" | "heavy";
 export interface Place {
   id?: number;
@@ -36,6 +36,9 @@ export interface RouteOption {
   recommendation_reason?: string;
   duration: number;
   length: number;
+  mode?: Exclude<TravelMode, "combind">;
+  source_mode?: "car" | "motorbike";
+  combined_score?: number;
   geometry: [longitude: number, latitude: number][];
   connectors?: [longitude: number, latitude: number][][];
   segments?: {

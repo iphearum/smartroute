@@ -341,6 +341,15 @@ body {
 .route-info-label.active strong {
   color: var(--liquid-active-color);
 }
+.route-info-label.combind {
+  border-left: 4px solid var(--route-accent);
+  padding-left: 6px;
+}
+.route-info-label.combind .route-vehicle,
+.route-info-label.combind strong,
+.route-info-label.combind.active strong {
+  color: var(--route-accent);
+}
 @keyframes draw-route {
   to {
     stroke-dashoffset: 0;

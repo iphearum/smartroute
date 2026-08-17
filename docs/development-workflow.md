@@ -50,3 +50,41 @@ The frontend publishes `/manifest.webmanifest` from `frontend/src/app/manifest.t
 ## Shared application state
 
 `frontend/src/app/layout.tsx` is the root composition owner and mounts `AppShellProvider` from `frontend/src/shared/state/app-shell-context.tsx`. The provider creates a scoped Zustand vanilla store for cross-feature UI state: navigation selection, dock collapse, POI filters, language preference, and Place Data modal visibility. Components consume individual state slices through selector calls such as `useAppShell((state) => state.language)`; do not subscribe to the entire store, duplicate shared state locally, or coordinate it through window events. The scoped provider prevents state leakage between layout trees, and the layout remains a server component so Next.js metadata exports continue to work.
+
+## Routing backend
+
+Production route computation is owned by the Java GraphHopper service under
+`backend/graphhopper/`. It imports `backend/maps/cambodia-latest.osm.pbf`
+directly, stores its derived index in `backend/graphhopper/graph-cache/`, and
+serves its local HTTP API on port 8989. FastAPI adapts GraphHopper responses to
+the existing `/route/by-coordinates` frontend contract; it must not load the
+province GraphML files or run NetworkX/A* for coordinate routes.
+
+Long-running deployments supervise the Java host with PM2 using
+`backend/graphhopper/ecosystem.config.cjs`. Keep it in single-instance fork mode
+because every instance would load a separate routing graph and contend for the
+same graph cache. Preserve delayed automatic restarts and the 30-second shutdown
+window when changing the process definition. Persist the process list with
+`pm2 save` only after the GraphHopper health endpoint is available.
+
+Keep place search and viewport map data in the FastAPI/database layer. Route
+profiles map as follows: `car` to GraphHopper `car`, `motorbike` to
+`motorbike` (the built-in motorcycle custom model), `bike` to `bike`, and
+`walk` to `foot`. The legacy GraphML conversion commands remain available only
+for map-catalog exports and are not a runtime prerequisite. Routing runs in
+flexible mode with the explicitly requested bidirectional A* (`astarbi`)
+algorithm. Keep `profiles_ch` and `profiles_lm` empty: enabling CH would use its
+non-heuristic speed-mode query, while GraphHopper's separate alternative-route
+algorithm would no longer guarantee that every request uses A*.
+
+The `combind` UI/API mode is the explicit exception for route suggestion. It
+requests car and motorbike candidates separately, ranks their union with 60%
+normalized duration and 40% normalized distance, and returns up to three routes
+with the best balanced candidate recommended. Preserve `source_mode` on every
+result so the map can render the correct vehicle icon. Two-point `combind`
+requests use GraphHopper alternative discovery; via-point requests receive one
+A* candidate per profile because GraphHopper alternatives reject via points.
+In the frontend, preserve source identity with green (`#087F5B`) for car routes
+and orange (`#D97706`) for motorbike routes across polylines, route labels, the
+selected-route summary, and the `Best`-mode legend. Use line weight and opacity
+to indicate selection without replacing these source colors.

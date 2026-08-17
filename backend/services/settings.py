@@ -48,8 +48,8 @@ def _database_url():
 class Settings:
     database_url: str
     map_region: str | None
-    graph_path: str | None
-    custom_graphs: tuple[str, ...]
+    graphhopper_url: str
+    graphhopper_timeout_seconds: float
     host: str
     port: int
     reload: bool
@@ -62,9 +62,8 @@ class Settings:
 settings = Settings(
     database_url=_database_url(),
     map_region=os.getenv("SMARTROUTE_MAP_REGION") or None,
-    graph_path=os.getenv("SMARTROUTE_GRAPH") or None,
-    custom_graphs=tuple(value.strip() for value in os.getenv("SMARTROUTE_CUSTOM_GRAPHS", "").split(",")
-                        if value.strip()),
+    graphhopper_url=os.getenv("GRAPHHOPPER_URL", "http://127.0.0.1:8989").strip(),
+    graphhopper_timeout_seconds=float(os.getenv("GRAPHHOPPER_TIMEOUT_SECONDS", "30")),
     host=os.getenv("APP_HOST", "127.0.0.1"),
     port=int(os.getenv("APP_PORT", "8000")),
     reload=_boolean("APP_RELOAD"),

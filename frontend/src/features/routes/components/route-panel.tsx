@@ -13,14 +13,24 @@ import {
 } from "@/shared/ui/liquid";
 import { PinLocation } from "@/shared/ui/pin";
 import { MotorbikeIcon } from "@/shared/ui/motorbike-icon";
-import { BikeIcon, CarIcon, WalkIcon } from "@/shared/ui/vehicle-icons";
+import {
+  BikeIcon,
+  CarIcon,
+  CombindIcon,
+  WalkIcon,
+} from "@/shared/ui/vehicle-icons";
 import type { Coordinate, Place, TravelMode } from "../domain/types";
+import {
+  COMBIND_ROUTE_COLORS,
+  combindRouteColor,
+} from "../domain/route-colors";
 import { DirectionsDetail } from "./directions-detail";
 import { useRouteCalculation } from "../hooks/use-route-calculation";
 import { useRouteStore } from "../store/route-store";
 
-const modes: TravelMode[] = ["car", "motorbike", "bike", "walk"];
+const modes: TravelMode[] = ["combind", "car", "motorbike", "bike", "walk"];
 const modeIcons = {
+  combind: CombindIcon,
   car: CarIcon,
   motorbike: MotorbikeIcon,
   bike: BikeIcon,
@@ -132,7 +142,11 @@ export function RoutePanel({
       queueMicrotask(() => calculate(ready));
   };
   const topQuery =
-    drafts[1] ?? (points[1] ? placeName(points[1], language) : "");
+      drafts[1] ?? (points[1] ? placeName(points[1], language) : ""),
+    selectedColor =
+      mode === "combind"
+        ? combindRouteColor(routes[selectedRoute]?.source_mode)
+        : undefined;
   return (
     <section
       className="planner-panel absolute top-3.5 z-[1100] w-[390px] transition-[left] duration-300"
@@ -259,12 +273,35 @@ export function RoutePanel({
                   const ModeIcon = modeIcons[value];
                   return {
                     value,
-                    label: value,
+                    label: value === "combind" ? "Best" : value,
                     icon: <ModeIcon />,
                   };
                 })}
               />
             </div>
+            {mode === "combind" && (
+              <div
+                className="mx-5 flex items-center justify-center gap-5 text-[10px] font-bold text-slate-600"
+                aria-label="Combined route colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <i
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: COMBIND_ROUTE_COLORS.car }}
+                    aria-hidden="true"
+                  />
+                  Car route
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <i
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: COMBIND_ROUTE_COLORS.motorbike }}
+                    aria-hidden="true"
+                  />
+                  Motorbike route
+                </span>
+              </div>
+            )}
             <div className="px-[18px] pb-[18px] pt-2">
               <div className="relative pl-8">
                 <span className="absolute bottom-8 left-[9px] top-8 w-px bg-slate-300" />
@@ -377,9 +414,19 @@ export function RoutePanel({
                 <button
                   onClick={() => setShowDetails(true)}
                   className="mt-3 flex w-full items-center rounded-xl border-l-4 border-emerald-700 bg-emerald-50 p-3 text-left transition-colors hover:bg-emerald-100"
+                  style={
+                    selectedColor
+                      ? { borderLeftColor: selectedColor }
+                      : undefined
+                  }
                 >
                   <span className="flex-1">
-                    <strong className="text-lg text-emerald-800">
+                    <strong
+                      className="text-lg text-emerald-800"
+                      style={
+                        selectedColor ? { color: selectedColor } : undefined
+                      }
+                    >
                       {Math.max(
                         1,
                         Math.round(routes[selectedRoute].duration / 60),
@@ -393,7 +440,12 @@ export function RoutePanel({
                       View turn-by-turn directions
                     </span>
                   </span>
-                  <span className="text-xl text-emerald-700">›</span>
+                  <span
+                    className="text-xl text-emerald-700"
+                    style={selectedColor ? { color: selectedColor } : undefined}
+                  >
+                    ›
+                  </span>
                 </button>
               )}
             </div>

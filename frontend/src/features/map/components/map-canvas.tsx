@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type LType from "leaflet";
 import type { Coordinate, Place } from "@/features/routes/domain/types";
+import { combindRouteColor } from "@/features/routes/domain/route-colors";
 import { useRouteStore } from "@/features/routes/store/route-store";
 import { useRouteCalculation } from "@/features/routes/hooks/use-route-calculation";
 import { routesApi } from "@/features/routes/api/routes-api";
@@ -570,6 +571,12 @@ export function MapCanvas({
       );
     drawOrder.forEach(({ route, index }) => {
       const active = index === selected,
+        routeColor =
+          mode === "combind"
+            ? combindRouteColor(route.source_mode)
+            : active
+              ? "#087f5b"
+              : "#6475dc",
         geometries = route.segments?.length
           ? route.segments.map((segment) => segment.geometry)
           : [route.geometry];
@@ -582,9 +589,9 @@ export function MapCanvas({
             opacity: 0.9,
           }).addTo(currentMap),
           line = L.polyline(points, {
-            color: active ? "#087f5b" : "#6475dc",
+            color: routeColor,
             weight: active ? 7 : 4,
-            opacity: active ? 1 : 0.6,
+            opacity: active ? 1 : mode === "combind" ? 0.72 : 0.6,
           }).addTo(currentMap);
         routeLayers.current.push(outline, line);
         line.on("click", () => setSelectedRoute(index));
@@ -597,6 +604,10 @@ export function MapCanvas({
         }
       });
     });
+    const connectorColor =
+      mode === "combind"
+        ? combindRouteColor(routes[selected]?.source_mode)
+        : "#087f5b";
     (routes[selected]?.connectors || []).forEach((connector) => {
       const points = connector.map(([lon, lat]) => [lat, lon] as Coordinate),
         outline = L.polyline(points, {
@@ -607,7 +618,7 @@ export function MapCanvas({
           lineCap: "round",
         }).addTo(currentMap),
         line = L.polyline(points, {
-          color: "#087f5b",
+          color: connectorColor,
           weight: 4,
           opacity: 0.9,
           dashArray: "2 9",
@@ -662,12 +673,16 @@ export function MapCanvas({
         active = index === selected,
         minutes = Math.max(1, Math.round(route.duration / 60)),
         distance = (route.length / 1000).toFixed(1),
+        routeMode = route.mode ?? mode,
+        routeColor =
+          mode === "combind" ? combindRouteColor(route.source_mode) : null,
         VehicleIcon = {
           car: CarIcon,
           motorbike: MotorbikeIcon,
           bike: BikeIcon,
           walk: WalkIcon,
-        }[mode],
+          combind: CarIcon,
+        }[routeMode],
         symbol = renderToStaticMarkup(<VehicleIcon />);
       occupiedLabelPoints.push(labelPosition.point);
       const mapPoint = labelPosition.point,
@@ -681,7 +696,7 @@ export function MapCanvas({
         pointerAnchor = { left: 18, center: 48, right: 78 }[pointerPosition],
         icon = L.divIcon({
           className: "route-info-icon",
-          html: `<button type="button" class="route-info-label pointer-${pointerPosition}${active ? " active" : ""}" aria-label="Select ${minutes} minute route"><span><i class="route-vehicle" aria-hidden="true">${symbol}</i><strong>${minutes} min</strong></span><small>${distance} km</small></button>`,
+          html: `<button type="button" class="route-info-label pointer-${pointerPosition}${active ? " active" : ""}${routeColor ? " combind" : ""}"${routeColor ? ` style="--route-accent:${routeColor}"` : ""} aria-label="Select ${minutes} minute route"><span><i class="route-vehicle" aria-hidden="true">${symbol}</i><strong>${minutes} min</strong></span><small>${distance} km</small></button>`,
           iconSize: [96, 54],
           iconAnchor: [pointerAnchor, 54],
         });

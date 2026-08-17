@@ -1,0 +1,50 @@
+graphhopper:
+  # Read Cambodia directly from the local OSM PBF. The generated Java routing
+  # index is separate from the source extract and can be safely rebuilt.
+  datareader.file: ../maps/cambodia-latest.osm.pbf
+  graph.location: graph-cache/cambodia-astar
+
+  profiles:
+    - name: car
+      custom_model_files: [car.json]
+    - name: motorbike
+      custom_model_files: [motorcycle.json]
+    - name: bike
+      custom_model_files: [bike.json]
+    - name: foot
+      custom_model_files: [foot.json]
+
+  # Use flexible routing so requests can run bidirectional A* instead of the
+  # non-heuristic contraction-hierarchy query algorithm.
+  profiles_ch: []
+  profiles_lm: []
+
+  graph.encoded_values: |
+    car_access, car_average_speed, road_access, road_class, road_environment,
+    roundabout, max_speed, surface, track_type,
+    bike_access, bike_average_speed, bike_priority, bike_road_access, bike_network,
+    foot_access, foot_average_speed, foot_priority, foot_road_access, hike_rating,
+    mtb_rating, country
+  graph.dataaccess.default_type: RAM_STORE
+  datareader.preferred_language: en
+  import.osm.ignored_highways: construction
+  prepare.min_network_size: 200
+  routing.max_visited_nodes: 1000000
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 127.0.0.1
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: 127.0.0.1
+  request_log:
+    appenders: []
+
+logging:
+  level: INFO
+  appenders:
+    - type: console
+      time_zone: UTC

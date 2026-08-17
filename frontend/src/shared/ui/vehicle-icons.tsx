@@ -75,3 +75,26 @@ export function WalkIcon(props: VehicleIconProps) {
     </svg>
   );
 }
+
+export function CombindIcon(props: VehicleIconProps) {
+  return (
+    <svg {...sharedProps} {...props}>
+      <path
+        d="M12 12h31l7 8h10M9 26h8m38 0h8M24 26h24"
+        stroke="currentColor"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="18" cy="29" r="7" stroke="currentColor" strokeWidth="4" />
+      <circle cx="54" cy="29" r="7" stroke="currentColor" strokeWidth="4" />
+      <path
+        d="m31 6 5-4 5 4m-5-4v18"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

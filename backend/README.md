@@ -2,8 +2,8 @@
 
 SmartRoute is a FastAPI map and routing application for Cambodia. It supports
 location search, map pins, multiple destinations, travel modes, recommended routes,
-Google Maps link imports, province-level offline road graphs, searchable OSM
-features, and custom map updates.
+Google Maps link imports, Java/GraphHopper routing over a local Cambodia PBF,
+searchable OSM features, and custom map updates.
 
 ![SmartRoute demo](images/demo.png)
 
@@ -17,6 +17,8 @@ source .venv/bin/activate       # Windows: .venv\Scripts\activate
 python -m pip install -r requirements.txt
 cp .env.example .env           # Windows: copy .env.example .env
 python artisan migrate
+# In another terminal; the first launch downloads GraphHopper and imports the PBF:
+./graphhopper/start.sh
 python main.py
 ```
 
@@ -83,9 +85,74 @@ curl -L https://download.geofabrik.de/asia/cambodia-latest.osm.pbf \
   -o maps/cambodia-latest.osm.pbf
 ```
 
-### Convert PBF roads to GraphML
+### Run the Java GraphHopper routing host
 
-Convert all 25 provinces without Overpass or Nominatim requests:
+FastAPI no longer loads or computes routes from province GraphML files. Start the
+local Java 17+ GraphHopper host, which imports `maps/cambodia-latest.osm.pbf`
+directly and caches its routing index under `graphhopper/graph-cache/`:
+
+```bash
+chmod +x graphhopper/start.sh
+./graphhopper/start.sh
+```
+
+The script downloads the pinned GraphHopper 11 web-service JAR on first use and
+listens on `127.0.0.1:8989`. Override memory or the version when needed:
+
+```bash
+JAVA_OPTS="-Xms2g -Xmx6g" GRAPHHOPPER_VERSION=11.0 ./graphhopper/start.sh
+```
+
+For a long-running host, manage GraphHopper with PM2 from the `backend`
+directory:
+
+```bash
+npm install --global pm2
+pm2 start graphhopper/ecosystem.config.cjs
+pm2 status smartroute-graphhopper
+pm2 logs smartroute-graphhopper
+curl --fail http://127.0.0.1:8989/health
+```
+
+After confirming the service is healthy, persist the process list and configure
+PM2 to start at boot. Run the command printed by `pm2 startup` when it asks for
+administrator access:
+
+```bash
+pm2 startup
+# Run the platform-specific command printed above, then:
+pm2 save
+```
+
+Apply environment or launcher changes with
+`pm2 restart smartroute-graphhopper --update-env`. The PM2 definition runs one
+forked instance, waits up to 30 seconds during shutdown, delays failed restarts
+by five seconds, and defaults to a 1–4 GiB Java heap. Edit
+`graphhopper/ecosystem.config.cjs` to tune those values for the host.
+
+FastAPI delegates `POST /route/by-coordinates` to this service. Configure a
+different host with `GRAPHHOPPER_URL`; `GRAPHHOPPER_TIMEOUT_SECONDS` controls the
+backend request timeout. Car, motorbike, bike, and walking profiles use
+GraphHopper's flexible bidirectional A* (`astarbi`) algorithm. Its derived index
+lives under `graphhopper/graph-cache/cambodia-astar`. Replacing the PBF requires
+removing that directory before restarting so GraphHopper can build a fresh index.
+Standard route requests return the single A*-optimal path; GraphHopper's separate
+alternative-route algorithm is used only to discover `combind` candidates.
+
+The coordinate API also accepts `mode: "combind"` for best-route suggestions.
+This mode makes one car request and one motorbike request, merges their candidate
+paths, and returns up to three routes. The recommended route minimizes a weighted
+score of normalized duration (60%) and distance (40%); the fastest and shortest
+candidates are retained when they differ. Each result exposes `source_mode` as
+`car` or `motorbike`. For two-point routes, `combind` uses GraphHopper's
+alternative-route candidate discovery; multi-stop requests fall back to one A*
+candidate per profile because GraphHopper alternatives do not accept via points.
+
+### Optional legacy GraphML conversion
+
+The map catalog can still create and distribute province GraphML artifacts, but
+they are no longer used for route computation. Convert all 25 provinces without
+Overpass or Nominatim requests only when a downstream GraphML consumer needs them:
 
 ```bash
 python artisan map:convert-pbf --network-type drive --workers 2
@@ -216,12 +283,11 @@ GET /maps/cambodia/<province>/graphml
 For example, `http://127.0.0.1:8000/maps/cambodia/siem_reap/graphml` downloads
 the Siem Reap road graph with a browser-friendly attachment filename.
 
-GraphML stores the runtime road graph used by NetworkX/A*. PBF remains the
-compact source of truth for rebuilding graphs and extracting features.
+GraphHopper's Java index is the runtime road graph used for route computation.
+The PBF is the source of truth for rebuilding that index and extracting map
+features. GraphML is retained only as an optional map-catalog artifact.
 
-At startup the backend scans `maps/<country>/<province>/base/*.graphml` and
-registers every non-empty province graph automatically. The frontend watches
-the padded visible map bounds and requests places through
+The frontend watches the padded visible map bounds and requests places through
 `GET /maps/viewport/places`. Panning and zooming cancel stale requests, show a
 loading indicator, and merge returned places by database ID.
 
