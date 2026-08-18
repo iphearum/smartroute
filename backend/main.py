@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from api.graph_routes import router
 from api.map_catalog import router as map_catalog_router
+from api.agent import router as agents
 from services.graphhopper import GraphHopperClient
 from services.map_store import MapStore
 from services.settings import settings
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="SmartRoutePP", lifespan=lifespan)
 app.include_router(router)
 app.include_router(map_catalog_router)
+app.include_router(agents)
 
 
 if __name__ == "__main__":

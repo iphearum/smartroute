@@ -6,7 +6,7 @@ const frontendPort = String(process.env.APP_PORT || 3100);
 module.exports = {
   apps: [
     {
-      name: "smartroute-backend",
+      name: "smart-backend",
       cwd: path.join(root, "backend"),
       script: path.join(root, "backend", ".venv", "bin", "python"),
       args: "-m main",
@@ -23,7 +23,7 @@ module.exports = {
       },
     },
     {
-      name: "smartroute-frontend",
+      name: "smart-frontend",
       cwd: path.join(root, "frontend"),
       script: path.join(root, "frontend", "node_modules", "next", "dist", "bin", "next"),
       args: "start -H 0.0.0.0",
@@ -34,11 +34,7 @@ module.exports = {
       time: true,
       env: {
         NODE_ENV: "production",
-        PORT: frontendPort,
-        APP_NAME: process.env.APP_NAME || "PsarAI Platform. (Cambodia)",
-        APP_DESCRIPTION:
-          process.env.APP_DESCRIPTION || "PsarAI - Your AI Travel Companion",
-        FASTAPI_URL: "http://127.0.0.1:8000",
+        PORT: frontendPort
       },
     },
   ],
