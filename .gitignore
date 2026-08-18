@@ -9,6 +9,7 @@
 *.swp
 *.swo
 *~
+*/.git
 
 # Operating-system metadata
 .DS_Store
