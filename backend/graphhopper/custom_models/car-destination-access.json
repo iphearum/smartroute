@@ -1,0 +1,11 @@
+{
+  "distance_influence": 90,
+  "priority": [
+    { "if": "!car_access", "multiply_by": "0" },
+    { "if": "road_access == PRIVATE", "multiply_by": "0.15" },
+    { "if": "road_access == DESTINATION || road_access == DELIVERY", "multiply_by": "0.5" }
+  ],
+  "speed": [
+    { "if": "true", "limit_to": "car_average_speed" }
+  ]
+}

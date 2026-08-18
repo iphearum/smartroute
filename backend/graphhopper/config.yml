@@ -1,0 +1,50 @@
+graphhopper:
+  datareader.file: maps/cambodia-latest.osm.pbf
+  graph.location: maps/graphhopper-cache
+  custom_models.directory: graphhopper/custom_models
+
+  profiles:
+    - name: car
+      custom_model_files: [car.json, motorized-default-access.json]
+    - name: car_destination_access
+      custom_model_files: [car-destination-access.json]
+    - name: motorcycle
+      custom_model_files: [motorcycle.json]
+    - name: motorcycle_destination_access
+      custom_model_files: [motorcycle-destination-access.json]
+    - name: bike
+      custom_model_files: [bike.json]
+    - name: foot
+      custom_model_files: [foot.json]
+
+  # SmartRoute deliberately uses LM hybrid mode for fast routing with room for
+  # request-time custom weighting. Do not add these profiles to profiles_ch.
+  profiles_ch: []
+  profiles_lm:
+    - profile: car
+    - profile: car_destination_access
+    - profile: motorcycle
+    - profile: motorcycle_destination_access
+    - profile: bike
+    - profile: foot
+
+  graph.encoded_values: |
+    car_access|block_private=false, car_average_speed, country, road_class, roundabout, max_speed, road_environment,
+    road_access, track_type, surface,
+    foot_access, foot_average_speed, foot_priority, foot_road_access, hike_rating,
+    bike_access, bike_average_speed, bike_priority, bike_road_access, bike_network, ferry_speed,
+    mtb_rating
+
+  import.osm.ignored_highways: ""
+  routing.non_ch.max_waypoint_distance: 1000000
+  routing.max_visited_nodes: 1000000
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 127.0.0.1
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: 127.0.0.1

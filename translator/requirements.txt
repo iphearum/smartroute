@@ -1,0 +1,5 @@
+deep-translator>=1.11
+datasets>=3.6
+python-dotenv>=1.2
+pandas>=2.0
+pyarrow>=14.0
