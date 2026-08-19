@@ -1,0 +1,30 @@
+{
+  "distance_influence": 90,
+  "priority": [
+    { "if": "!car_access", "multiply_by": "0" },
+    { "if": "track_type.ordinal() > 1", "multiply_by": "0" },
+    { "if": "road_access == PRIVATE", "multiply_by": "0.15" },
+    { "if": "road_access == DESTINATION || road_access == DELIVERY", "multiply_by": "0.5" },
+    { "if": "road_class == MOTORWAY || road_class == TRUNK", "multiply_by": "0.1" }
+  ],
+  "speed": [
+    { "if": "true", "limit_to": "0.9 * car_average_speed" },
+    { "if": "true", "limit_to": "120" },
+    {
+    "if": "surface == SAND || surface == GRASS",
+      "limit_to": "20"
+    },
+    {
+      "if": "surface == DIRT || surface == GROUND || surface == UNPAVED",
+      "limit_to": "25"
+    },
+    {
+      "if": "surface == GRAVEL || surface == COBBLESTONE",
+      "limit_to": "30"
+    },
+    {
+      "if": "surface == COMPACTED || surface == PAVING_STONES",
+      "limit_to": "45"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docs-First Feature"
+  short_description: "Review docs before code and update them after"
+  default_prompt: "Use $docs-first-feature to review project docs, implement the feature, and update related documentation."

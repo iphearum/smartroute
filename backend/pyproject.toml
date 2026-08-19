@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+# Tests live in test/ but import application modules as `app.*`, `services.*`,
+# etc. `pythonpath = ["."]` puts the backend root on sys.path so those resolve
+# without a conftest.py shim or an installed package.
+pythonpath = ["."]
+testpaths = ["test"]

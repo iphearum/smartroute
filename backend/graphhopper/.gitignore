@@ -1,0 +1,4 @@
+graph-cache/
+graphhopper-web-*.jar
+logs/
+custom_models
