@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -104,3 +105,77 @@ class PlaceMediaCreate(BaseModel):
     caption: str | None = None
     sort_order: int = Field(default=0, ge=0)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class BranchUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=80)
+    email: str | None = Field(default=None, max_length=255)
+    opening_hours: dict[str, Any] | None = None
+    pickup_enabled: bool | None = None
+    delivery_enabled: bool | None = None
+    active: bool | None = None
+    metadata: dict[str, Any] | None = None
+
+
+PLACE_STATUSES = ("active", "temporarily_closed", "permanently_closed", "moved", "nonexistent", "disabled")
+
+
+class PlaceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    address: str | None = None
+    category: str | None = Field(default=None, max_length=100)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    status: Literal["active", "temporarily_closed", "permanently_closed", "moved", "nonexistent", "disabled"] | None = None
+    moved_to_place_id: int | None = Field(default=None, gt=0)
+
+
+class BranchScheduleCreate(BaseModel):
+    kind: Literal["holiday", "closure", "fire", "maintenance", "event", "other"] = "closure"
+    title: str = Field(min_length=1, max_length=255)
+    starts_at: datetime
+    ends_at: datetime
+    all_day: bool = True
+    is_closed: bool = True
+    notes: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def ends_after_start(self):
+        if self.ends_at <= self.starts_at:
+            raise ValueError("Schedule end must be after its start")
+        return self
+
+
+class OrderLineCreate(BaseModel):
+    variant_id: int = Field(gt=0)
+    quantity: int = Field(gt=0, le=1000)
+
+
+class OrderCreate(BaseModel):
+    branch_id: int = Field(gt=0)
+    order_type: Literal["dine_in", "takeaway", "delivery"] = "dine_in"
+    lines: list[OrderLineCreate] = Field(min_length=1, max_length=100)
+
+
+class StaffCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    role: str = Field(default="Staff", min_length=1, max_length=120)
+    hourly_rate: Decimal = Field(default=0, ge=0, max_digits=14, decimal_places=2)
+    hours_this_week: Decimal = Field(default=0, ge=0, max_digits=8, decimal_places=2)
+    clocked_in: bool = False
+
+
+class StaffUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    role: str | None = Field(default=None, min_length=1, max_length=120)
+    hourly_rate: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    hours_this_week: Decimal | None = Field(default=None, ge=0, max_digits=8, decimal_places=2)
+    clocked_in: bool | None = None
+    active: bool | None = None
+
+
+class PayrollRunCreate(BaseModel):
+    period_start: str = Field(min_length=10, max_length=10)
+    period_end: str = Field(min_length=10, max_length=10)

@@ -55,6 +55,31 @@ class ShopBranch(models.Model):
         indexes = (("place_id", "active"), ("business_id", "active"))
 
 
+class BranchSchedule(models.Model):
+    """A dated operational override such as a holiday or emergency closure."""
+
+    id = fields.BigIntField(pk=True)
+    branch = fields.ForeignKeyField(
+        "models.ShopBranch", related_name="schedules", source_field="branch_id",
+        on_delete=fields.CASCADE,
+    )
+    kind = fields.CharField(max_length=32, default="closure")
+    title = fields.CharField(max_length=255)
+    starts_at = fields.DatetimeField()
+    ends_at = fields.DatetimeField()
+    all_day = fields.BooleanField(default=True)
+    is_closed = fields.BooleanField(default=True)
+    notes = fields.TextField(null=True)
+    active = fields.BooleanField(default=True)
+    metadata = fields.JSONField(default=dict, source_field="metadata_json")
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "branch_schedules"
+        indexes = (("branch_id", "active", "starts_at", "ends_at"),)
+
+
 class Storefront(models.Model):
     id = fields.BigIntField(pk=True)
     business = fields.ForeignKeyField(
@@ -133,3 +158,94 @@ class InventoryItem(models.Model):
         table = "inventory_items"
         unique_together = (("branch_id", "variant_id"),)
         indexes = (("branch_id",), ("variant_id",))
+
+
+class Order(models.Model):
+    """A merchant order created by the POS or a future customer channel."""
+
+    id = fields.BigIntField(pk=True)
+    business = fields.ForeignKeyField(
+        "models.Business", related_name="orders", source_field="business_id",
+        on_delete=fields.CASCADE,
+    )
+    branch = fields.ForeignKeyField(
+        "models.ShopBranch", related_name="orders", source_field="branch_id",
+        on_delete=fields.CASCADE,
+    )
+    order_number = fields.CharField(max_length=40, unique=True)
+    order_type = fields.CharField(max_length=32, default="dine_in")
+    status = fields.CharField(max_length=32, default="preparing")
+    subtotal = fields.DecimalField(max_digits=14, decimal_places=2, default=0)
+    tax = fields.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total = fields.DecimalField(max_digits=14, decimal_places=2, default=0)
+    metadata = fields.JSONField(default=dict, source_field="metadata_json")
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "commerce_orders"
+        indexes = (("business_id", "created_at"), ("branch_id", "status"))
+
+
+class OrderItem(models.Model):
+    id = fields.BigIntField(pk=True)
+    order = fields.ForeignKeyField(
+        "models.Order", related_name="items", source_field="order_id",
+        on_delete=fields.CASCADE,
+    )
+    variant = fields.ForeignKeyField(
+        "models.ProductVariant", related_name="order_items", source_field="variant_id",
+        on_delete=fields.RESTRICT,
+    )
+    product_name = fields.CharField(max_length=255)
+    variant_title = fields.CharField(max_length=255, null=True)
+    quantity = fields.IntField()
+    unit_price = fields.DecimalField(max_digits=14, decimal_places=2)
+    line_total = fields.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        table = "commerce_order_items"
+        indexes = (("order_id",), ("variant_id",))
+
+
+class StaffMember(models.Model):
+    """A staff record used by the merchant payroll workspace."""
+
+    id = fields.BigIntField(pk=True)
+    business = fields.ForeignKeyField(
+        "models.Business", related_name="staff", source_field="business_id",
+        on_delete=fields.CASCADE,
+    )
+    name = fields.CharField(max_length=255)
+    role = fields.CharField(max_length=120, default="Staff")
+    hourly_rate = fields.DecimalField(max_digits=14, decimal_places=2, default=0)
+    hours_this_week = fields.DecimalField(max_digits=8, decimal_places=2, default=0)
+    clocked_in = fields.BooleanField(default=False)
+    active = fields.BooleanField(default=True)
+    metadata = fields.JSONField(default=dict, source_field="metadata_json")
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "staff_members"
+        indexes = (("business_id", "active"),)
+
+
+class PayrollRun(models.Model):
+    """An auditable payroll action for a business."""
+
+    id = fields.BigIntField(pk=True)
+    business = fields.ForeignKeyField(
+        "models.Business", related_name="payroll_runs", source_field="business_id",
+        on_delete=fields.CASCADE,
+    )
+    period_start = fields.DateField()
+    period_end = fields.DateField()
+    total = fields.DecimalField(max_digits=14, decimal_places=2)
+    status = fields.CharField(max_length=32, default="paid")
+    paid_at = fields.DatetimeField(auto_now_add=True)
+    metadata = fields.JSONField(default=dict, source_field="metadata_json")
+
+    class Meta:
+        table = "payroll_runs"
+        indexes = (("business_id", "paid_at"),)

@@ -48,6 +48,11 @@ export function PlaceResults({
                 {place.metadata.opening_hours}
               </small>
             )}
+            {place.status && place.status !== "active" && (
+              <small className="block truncate text-xs text-amber-700">
+                {place.status.replaceAll("_", " ")}
+              </small>
+            )}
           </span>
           {place.category && (
             <span className="max-w-20 truncate rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">

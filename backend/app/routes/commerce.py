@@ -1,4 +1,4 @@
-"""Commerce endpoints: businesses, catalog, inventory, imports, currency."""
+"""Commerce endpoints: businesses, catalog, inventory, operations, imports, currency."""
 
 from __future__ import annotations
 
@@ -9,7 +9,10 @@ from app.http.requests.commerce_requests import (BranchCreate, BusinessCreate,
                                                  BusinessUpdate, InventoryUpdate,
                                                  PlaceMediaCreate, ProductCreate,
                                                  ProductUpdate, ProductVariantCreate,
-                                                 ProductVariantUpdate, StorefrontCreate)
+                                                 ProductVariantUpdate, StorefrontCreate,
+                                                 BranchUpdate, OrderCreate, PayrollRunCreate,
+                                                 StaffCreate, StaffUpdate, PlaceUpdate,
+                                                 BranchScheduleCreate)
 
 commerce = APIRouter(prefix="/commerce", tags=["commerce"])
 commerce_controller = CommerceController()
@@ -18,6 +21,11 @@ commerce_controller = CommerceController()
 @commerce.post("/businesses", status_code=201)
 async def create_business(payload: BusinessCreate):
     return await commerce_controller.create_business(payload)
+
+
+@commerce.get("/businesses/mine")
+async def my_business(request: Request):
+    return await commerce_controller.my_business(request)
 
 
 @commerce.get("/businesses/{business_id}")
@@ -38,6 +46,56 @@ async def create_branch(business_id: int, payload: BranchCreate):
 @commerce.post("/businesses/{business_id}/storefronts", status_code=201)
 async def create_storefront(business_id: int, payload: StorefrontCreate):
     return await commerce_controller.create_storefront(business_id, payload)
+
+
+@commerce.patch("/branches/{branch_id}")
+async def update_branch(branch_id: int, payload: BranchUpdate):
+    return await commerce_controller.update_branch(branch_id, payload)
+
+
+@commerce.get("/branches/{branch_id}/schedules")
+async def list_branch_schedules(branch_id: int):
+    return await commerce_controller.list_branch_schedules(branch_id)
+
+
+@commerce.post("/branches/{branch_id}/schedules", status_code=201)
+async def create_branch_schedule(branch_id: int, payload: BranchScheduleCreate):
+    return await commerce_controller.create_branch_schedule(branch_id, payload)
+
+
+@commerce.delete("/schedules/{schedule_id}")
+async def delete_branch_schedule(schedule_id: int):
+    return await commerce_controller.delete_branch_schedule(schedule_id)
+
+
+@commerce.get("/businesses/{business_id}/dashboard")
+async def dashboard(business_id: int):
+    return await commerce_controller.dashboard(business_id)
+
+
+@commerce.post("/businesses/{business_id}/orders", status_code=201)
+async def create_order(business_id: int, payload: OrderCreate):
+    return await commerce_controller.create_order(business_id, payload)
+
+
+@commerce.get("/businesses/{business_id}/staff")
+async def list_staff(business_id: int):
+    return await commerce_controller.list_staff(business_id)
+
+
+@commerce.post("/businesses/{business_id}/staff", status_code=201)
+async def create_staff(business_id: int, payload: StaffCreate):
+    return await commerce_controller.create_staff(business_id, payload)
+
+
+@commerce.patch("/staff/{staff_id}")
+async def update_staff(staff_id: int, payload: StaffUpdate):
+    return await commerce_controller.update_staff(staff_id, payload)
+
+
+@commerce.post("/businesses/{business_id}/payroll/runs", status_code=201)
+async def run_payroll(business_id: int, payload: PayrollRunCreate):
+    return await commerce_controller.run_payroll(business_id, payload)
 
 
 @commerce.post("/businesses/{business_id}/products", status_code=201)
@@ -78,6 +136,11 @@ async def set_inventory(branch_id: int, variant_id: int, payload: InventoryUpdat
 @commerce.get("/places/{place_id}")
 async def get_place_profile(request: Request, place_id: int):
     return await commerce_controller.get_place_profile(request, place_id)
+
+
+@commerce.patch("/places/{place_id}")
+async def update_place(request: Request, place_id: int, payload: PlaceUpdate):
+    return await commerce_controller.update_place(request, place_id, payload)
 
 
 @commerce.post("/places/{place_id}/media", status_code=201)

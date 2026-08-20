@@ -144,10 +144,8 @@ async def run(pbf_path: Path, regions: list[str], feature_types: list[str], work
             except Exception as exc:
                 return slug, None, exc
 
-    store = MapService(Path("maps"), settings.database_url)
-    await store.initialize()
     seeded = failed = 0
-    try:
+    async with MapService(Path("maps"), settings.database_url) as store:
         tasks = [asyncio.create_task(extract(slug)) for slug in regions]
         for future in asyncio.as_completed(tasks):
             slug, result, error = await future
@@ -169,9 +167,7 @@ async def run(pbf_path: Path, regions: list[str], feature_types: list[str], work
                 tqdm.write(f"[{slug}] failed: {exc}")
             finally:
                 progress.update(1)
-    finally:
-        progress.close()
-        await store.close()
+    progress.close()
     print(f"Feature seed finished: upserted={seeded:,}, failed_provinces={failed}")
 
 

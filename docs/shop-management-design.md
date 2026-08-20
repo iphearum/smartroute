@@ -3,8 +3,9 @@
 ## Status and scope
 
 This document defines how the frontend shop-management UI (`/shops`,
-`/shops/manage`) maps onto the existing backend. It is an architecture note,
-not a claim that every section is backed by real data today.
+`/shops/manage`) maps onto the backend. All sections in the shop-admin shell
+now use persisted backend data; this document records the contracts and the
+remaining platform boundaries.
 
 Two boundaries already exist and this design does not relitigate them:
 
@@ -13,12 +14,12 @@ Two boundaries already exist and this design does not relitigate them:
   working trusted-administration API under `/commerce/*`
   (`backend/api/commerce.py`, `backend/services/map_store.py`). No auth or
   ownership check exists on these routes yet.
-- That same document's "Current boundary" section excludes checkout,
-  payments, orders, delivery assignment, reviews, and merchant moderation.
-  There is no `orders`, `staff`, or `payroll` table anywhere in the schema.
+- That same document's "Current boundary" section excludes public checkout,
+  payments, delivery assignment, reviews, and merchant moderation. The
+  merchant POS order ledger, staff, and payroll-run tables are now implemented
+  for the authenticated shop-management workspace.
 
-Consequently this feature has two tiers, and the UI must keep them visibly
-distinct rather than implying feature parity:
+The supported shop-admin surface is now persisted end to end:
 
 | Section | Backing | Status |
 | --- | --- | --- |
@@ -27,17 +28,14 @@ distinct rather than implying feature parity:
 | Manage shop (products) | `POST/GET/PATCH .../products`, `POST/PATCH /commerce/.../variants` | Real |
 | Bulk import (CSV/XLSX) | `POST .../products/import[/preview]` | Real |
 | Stock | `GET`/`PUT /commerce/branches/{id}/inventory[/{variant_id}]` | Real |
-| Dashboard (sales, orders) | none | Prototype — no `orders` table exists |
-| POS | none | Prototype — no `orders` table exists |
-| Payroll | none | Prototype — no `staff`/`payroll` table exists |
-| Other info (hours, payment methods, toggles) | `metadata` JSON field exists but is unused by this UI | Prototype |
+| Dashboard (sales, orders) | `GET /commerce/businesses/{id}/dashboard` | Real |
+| POS | `POST /commerce/businesses/{id}/orders` | Real |
+| Payroll | staff and payroll endpoints under `/commerce/businesses/{id}` | Real |
+| Other info | `PATCH /commerce/branches/{id}` using branch fields and metadata | Real |
+| Place lifecycle and branch schedules | `PATCH /commerce/places/{id}` and `/commerce/branches/{id}/schedules` | Real |
 
-"Prototype" sections keep the sample data already built (see
-`features/shops/domain/mock-shop-data.ts` and `mock-dashboard-data.ts`) and
-carry a visible label. They are not wired to any backend call. Building real
-versions requires designing `orders` and `staff` schemas first — out of scope
-here, and explicitly listed as a later phase in
-`place-commerce-foundation.md`.
+The old mock files remain as fixture/reference data for visual development;
+the production panels no longer import them.
 
 ## Backend additions in this change
 
@@ -58,6 +56,18 @@ Manage-shop/Stock experience. All three are now closed:
   `variant__product__name` so the Stock panel can render without a second
   round trip per row. The Stock panel now loads real quantities on mount
   instead of defaulting every field to empty.
+- `GET /commerce/businesses/{id}/dashboard` — returns seven-day sales,
+  recent orders, top sellers, and low-stock rows from persisted order and
+  inventory data.
+- `POST /commerce/businesses/{id}/orders` — creates a POS order transaction,
+  snapshots order lines, calculates 10% tax, and decrements available branch
+  inventory when a row exists.
+- `GET/POST /commerce/businesses/{id}/staff` and
+  `PATCH /commerce/staff/{id}` — manage active staff and weekly hours.
+- `POST /commerce/businesses/{id}/payroll/runs` — records a paid payroll run
+  from active staff hourly rates and weekly hours.
+- `PATCH /commerce/branches/{id}` — persists phone, opening hours, pickup,
+  delivery, payment methods, and shop preference metadata.
 
 `backend/test_commerce.py` covers all four new store methods
 (`update_business`, `update_product`, `update_product_variant`,
@@ -159,15 +169,20 @@ existing migration/seed/import command family.
 
 ## Bootstrapping "my business"
 
-There is no `GET /commerce/businesses?owner_user_id=` endpoint, so the
-frontend cannot discover "the current user's business" from the backend.
-Until that exists, the claimed `business_id` is cached in
-`window.localStorage` after creation (`features/shops/hooks/use-my-business.ts`).
-This is a client-side convenience, not an authorization boundary — matching
-`owner_user_id`'s documented status as "an opaque future identity link, not
-an authorization boundary yet." Anyone with the business ID can still call
-the write APIs directly; this cache only drives which business this browser
-tab treats as "mine."
+`GET /commerce/businesses/mine` (`CommerceController.my_business`) resolves
+the caller's business from the session cookie via
+`AuthController.current_user_id(request)` and
+`BusinessService.get_business_for_owner(owner_user_id)`, so the frontend
+(`features/shops/hooks/use-my-business.ts`) no longer needs a client-side
+`business_id` cache — it just calls that endpoint on mount and after
+claiming a business. This also fixed a real bug: the old `window.localStorage`
+cache was keyed per-browser-tab, not per-account, so signing into a
+different account on the same browser without clearing storage could show
+the previous account's shop. `owner_user_id` is still just a plain column
+match (see its "not an authorization boundary yet" note below) — the write
+APIs (`PATCH /commerce/businesses/{id}`, etc.) don't check it — but *reads*
+through `/mine` are safe because the owner id comes from the verified
+session, never from client input.
 
 ## Frontend architecture
 
@@ -179,22 +194,58 @@ frontend/src/
   features/shops/
     api/commerce-api.ts       -- thin wrapper over /commerce/* endpoints
     domain/commerce-types.ts  -- TS shapes matching map_store.py's .values() output
-    domain/mock-shop-data.ts       -- prototype-only sample data (Dashboard/POS)
-    domain/mock-dashboard-data.ts  -- prototype-only sample data (Dashboard/Payroll)
-    hooks/use-my-business.ts      -- loads/creates/caches the claimed business
+    domain/mock-shop-data.ts       -- retained visual fixtures; not used by production panels
+    domain/mock-dashboard-data.ts  -- retained visual fixtures; not used by production panels
+    hooks/use-my-business.ts      -- loads the session's business via GET .../mine
     hooks/use-exchange-rates.ts   -- latest NBC rates + refresh + toKhr()
     components/
       claim-business-flow.tsx -- /shops: search a place, create business + branch
       no-business-prompt.tsx  -- shown by real panels when no business is claimed
-      shop-admin-shell.tsx    -- responsive nav shell, prototype-banner switch
+      ../admin/components/admin-shell.tsx -- shared responsive admin chrome and slots
+      shop-admin-shell.tsx    -- shop navigation/content composition
+      shop-location-panel.tsx -- live MapLibre branch map and editable location fields
+      shop-platform-panel.tsx  -- reusable map mini-platform for shops and restaurants
       manage-shop-panel.tsx   -- REAL: list/create/edit/archive products+variants
       product-import-dialog.tsx -- REAL: CSV/XLSX drag-drop, preview, commit
       stock-panel.tsx         -- REAL: read/write inventory per branch
-      dashboard-overview.tsx  -- PROTOTYPE, labeled
-      pos-panel.tsx           -- PROTOTYPE, labeled
-      payroll-panel.tsx       -- PROTOTYPE, labeled
-      other-info-panel.tsx    -- PROTOTYPE, labeled
+      dashboard-overview.tsx  -- REAL: sales, orders, top sellers, low stock
+      pos-panel.tsx           -- REAL: catalog order creation and stock decrement
+      payroll-panel.tsx       -- REAL: staff records and payroll runs
+      other-info-panel.tsx    -- REAL: branch hours, phone, methods, preferences
 ```
+
+## Reusable map surface
+
+Pages should use `features/map/components/map-view.tsx` instead of creating a
+MapLibre instance or marker lifecycle themselves. `MapView` keeps the shared
+basemap and liquid-glass controls consistent while allowing each screen to
+configure its own behavior:
+
+```tsx
+<MapView
+  center={{ latitude: 11.5564, longitude: 104.9282 }}
+  zoom={16}
+  markers={[{ id: "shop", latitude: 11.5564, longitude: 104.9282, label: "Shop" }]}
+  showZoomControls
+  showRecenterControl
+  onMapClick={({ latitude, longitude }) => setDraftLocation({ latitude, longitude })}
+>
+  <div className="map-overlay">Page-specific status or actions</div>
+</MapView>
+```
+
+Available options are `center`, `zoom`, `markers`, `mapLabel`,
+`showZoomControls`, `showRecenterControl`, `onMapClick`, and `children` for
+page-specific overlays. Coordinates exposed by this component are always
+`latitude`/`longitude`; MapLibre's internal longitude/latitude ordering stays
+inside the component.
+
+The shop location screen edits the canonical place name, address, coordinates,
+and lifecycle state separately from the merchant branch profile. It also owns
+dated closure schedules for holidays, maintenance, emergencies, and other
+special events. A schedule is a reversible operational override; disabling or
+marking a place moved/nonexistent changes map discoverability without deleting
+its branch, order, media, or audit history.
 
 `useMyBusiness` exposes `{ business, status, error, refresh, claim }`.
 `status` is `"loading" | "none" | "ready" | "error"`. Every real panel reads
@@ -207,6 +258,72 @@ module-level Zustand store, not a hook) and renders in the single
 4s, individually dismissible, `role="status" aria-live="polite"` so screen
 readers announce new toasts without interrupting the current task.
 
+### Admin layout composition
+
+The dashboard, shop list, profile, and shop-management screens share
+`features/admin/components/admin-shell.tsx`. It owns the responsive shell
+(desktop sidebar, tablet icon rail, mobile bottom navigation, sticky header,
+content area, optional notice, and footer) and exposes navigation, header,
+notice, and content as inputs. `AppShell` supplies route-backed navigation for
+the top-level admin pages; `ShopAdminShell` supplies local section navigation
+and renders each shop panel through the same content slot. This is the
+frontend equivalent of a Blade layout yielding named sections: shell chrome is
+defined once, while feature components retain ownership of their data and
+behavior.
+
+New admin screens should consume `AdminShell` rather than duplicating sidebar,
+header, or bottom-navigation markup. The desktop presentation uses a compact top navigation
+with a search affordance and profile action; the mobile bottom navigation
+remains the responsive fallback. The desktop navigation reuses the shared
+`desktop-rail liquid-card liquid-dock` primitive already used by the map
+workspace, keeping active and hover behavior consistent across the app.
+The search input performs client-side filtering of the available admin
+sections and restores the full navigation when cleared.
+The visible brand link always returns to the public map (`/`) from the
+top-level admin pages; the nested shop-management shell returns to `/shops`.
+
+`ShopLocationPanel` is the management boundary for physical shop location
+data. It reuses `useMaplibreMap` and the project basemap configuration rather
+than creating a separate map engine. The marker is derived from the branch's
+canonical place coordinates; editable merchant fields are saved through
+`PATCH /commerce/branches/{id}` while the place itself remains the canonical
+map location.
+
+`AdminShell` renders the reusable `AppShellFooter` by default. It is semantic,
+participates in the content flow, remains visible after short pages without
+overlapping content, and provides a direct link back to the public map. A
+nested shell may pass `footer={null}` when its own workspace already provides
+the complete navigation surface.
+
+## Map shop mini-platform
+
+The public map keeps one MapLibre workspace and exposes a compact **Shops**
+liquid-glass action. `ShopPlatformPanel` opens in the same draggable
+`place-detail-shell` family used by POI details. It searches the existing place
+API, filters shared POI data into restaurant and shop/store groups, and opens a
+selected result in the normal place-detail flow. Commerce POI cards also
+provide a direct Shop action, so users do not need to leave the map or create a
+second map instance.
+
+Both the place detail panel and shop mini-platform use the shared
+`resizable-liquid-window` behavior: drag the window header to move it, resize it
+from any edge or corner on desktop, or use maximize/restore to fit the available
+viewport. Mobile screens disable manual resizing and use a bounded full-width
+panel so the controls remain reachable. Both windows commit their geometry as
+viewport `left/top/width/height`, never as a transform offset, and the window
+touched last renders on top.
+
+`docs/map-floating-windows.md` is the reference for that behavior: the shared
+hooks, the eight-direction resize handles, the stacking band, and the
+`smartroute-window-session` record that restores open windows, geometry,
+maximized state and stacking order after a reload. The mini-platform falls back
+to the trigger anchor when no saved frame exists.
+
+The draggable **Shops** trigger button is a control rather than a window and
+still uses `usePersistentWindowPosition`, which stores versioned
+`{ version, x, y }` records under a component-specific key — for the trigger,
+offsets inside its safe-area zone.
+
 ## Product experience
 
 1. A signed-in user with no claimed business sees `/shops` render
@@ -217,6 +334,9 @@ readers announce new toasts without interrupting the current task.
    ID, and refreshes.
 2. Once claimed, `/shops` shows a real summary card (business name, branch
    place name, verification status) and a link into `/shops/manage`.
+   `/dashboard` and the shop-admin Dashboard also show the branch on a live
+   MapLibre map with coordinates, recenter control, and editable branch name,
+   phone, opening hours, pickup, and delivery settings.
 3. `/shops/manage` → **Manage shop** lists real products (`GET
    /commerce/businesses/{id}/products`) with their variants, and a form to
    create a product + its first variant (name, category, price → `POST
@@ -230,8 +350,9 @@ readers announce new toasts without interrupting the current task.
    price) and an archive/restore toggle; `/shops` header supports renaming
    the business inline. Every mutation shows a toast on success or failure —
    no more silent failures or inline-only error text that scrolls out of view.
-6. Dashboard/POS/Payroll/Other info stay reachable from the same shell but
-   open with a prototype banner explaining they preview a future phase.
+6. Dashboard/POS/Payroll/Other info stay reachable from the same shell and
+   use persisted backend data. Public checkout, payment settlement, delivery
+   assignment, and merchant moderation remain outside this workspace.
 
 ## Functional requirements
 
@@ -253,9 +374,8 @@ Real sections (Claim business, Manage shop, Stock) must, today:
 - **FR5** — Every create/update/error surfaces a toast in addition to any
   inline message, so feedback is visible even if the triggering form has
   scrolled out of view.
-- **FR6** — Any section without real backend support renders a visible
-  "Prototype" banner naming this document; it must never be visually
-  indistinguishable from a real section.
+- **FR6** — POS creates a persisted order from active catalog variants and
+  decrements available stock when inventory exists for the selected branch.
 - **FR7** — Any real panel rendered before a business is claimed shows
   `NoBusinessPrompt` with a link back to `/shops`, never a crash or a blank
   panel.
@@ -305,7 +425,7 @@ Real sections (Claim business, Manage shop, Stock) must, today:
 - `ClaimBusinessFlow` replacing the old "coming soon" stub on `/shops`.
 - Real `ManageShopPanel` (list + create product/variant), real `StockPanel`
   (declare quantity per variant, single branch).
-- Prototype banners on Dashboard/POS/Payroll/Other info, unchanged content.
+- Dashboard, POS, Payroll, and Other Info now use persisted backend contracts.
 
 ### Phase 2 (done)
 
@@ -319,16 +439,13 @@ Real sections (Claim business, Manage shop, Stock) must, today:
 
 ### Phase 3 (backend work required first)
 
-- `GET /commerce/businesses?owner_user_id=` — drop the localStorage
-  workaround once ownership/auth exists.
 - Pagination on `GET .../products` and `GET .../inventory` (NFR3).
 - Multi-branch selection in Stock once a business can have more than one
   active branch worth managing independently.
 
-### Phase 4 (new schemas required)
+### Phase 4 (platform work required)
 
-- `orders` (+ payment/delivery state) before POS or Dashboard sales/order
-  widgets can be real.
-- `staff`/`shift`/`payroll_run` before Payroll can be real.
+- Payment, delivery, and customer identity state around the now-real merchant
+  POS order ledger.
 - Merchant auth and ownership checks before any of this is safe to expose
   publicly (`place-commerce-foundation.md`, "Next phases" #1).

@@ -14,8 +14,9 @@ that already ran it -- only the Python module path moved.
 
 from __future__ import annotations
 
-from app.models.commerce import (Business, InventoryItem, Product, ProductVariant,
-                                 ShopBranch, Storefront)
+from app.models.commerce import (BranchSchedule, Business, InventoryItem, Order, OrderItem,
+                                 PayrollRun, Product, ProductVariant, ShopBranch, StaffMember,
+                                 Storefront)
 from app.models.exchange_rate import ExchangeRate
 from app.models.map import (CustomRoute, MapImage, MapRecord, MapRevision, RoadClosure,
                             default_travel_modes)
@@ -26,7 +27,8 @@ __models__ = [
     MapRecord, MapRevision, MapImage, CustomRoute, RoadClosure,
     Place, OsmFeature, ThreeDAsset, PlaceMedia, PoiTheme,
     User,
-    Business, ShopBranch, Storefront, Product, ProductVariant, InventoryItem,
+    Business, ShopBranch, BranchSchedule, Storefront, Product, ProductVariant, InventoryItem,
+    Order, OrderItem, StaffMember, PayrollRun,
     ExchangeRate,
 ]
 

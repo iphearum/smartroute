@@ -21,3 +21,5 @@ frontend/.next/
 frontend/.env.local
 frontend/*.tsbuildinfo
 maps/*
+
+translator

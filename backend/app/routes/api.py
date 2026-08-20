@@ -10,12 +10,14 @@ from fastapi import FastAPI
 
 from app.routes.auth import auth
 from app.routes.commerce import commerce
+from app.routes.assistant import router as assistant_router
 
 
 def register_routes(app: FastAPI) -> None:
     """Mount every router onto the application."""
     app.include_router(auth)
     app.include_router(commerce)
+    app.include_router(assistant_router)
 
     # Not yet migrated to controllers. Imported here rather than at module
     # scope because these pull in heavy routing/geo dependencies that would

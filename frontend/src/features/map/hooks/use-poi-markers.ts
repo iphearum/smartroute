@@ -7,6 +7,7 @@ import { useRouteCalculation } from "@/features/routes/hooks/use-route-calculati
 import { usePoiThemes } from "@/features/places/hooks/use-poi-themes";
 import { poiPreviewCard } from "@/features/places/components/poi-preview-card";
 import { MarkerLayer } from "@/features/map/lib/marker-layer";
+import { isShopPlace } from "@/features/shops/lib/shop-place";
 
 // Owns POI markers end-to-end: classifying places into themes, rendering
 // the marker DOM, the hover preview popup, and the zoom-based declutter
@@ -76,6 +77,16 @@ export function usePoiMarkers(
               );
               popup.remove();
             },
+            isShopPlace(place)
+              ? () => {
+                  window.dispatchEvent(
+                    new CustomEvent("smartroute:open-shop-platform", {
+                      detail: place,
+                    }),
+                  );
+                  popup.remove();
+                }
+              : undefined,
           );
           card.addEventListener("click", (event) => event.stopPropagation());
           popup

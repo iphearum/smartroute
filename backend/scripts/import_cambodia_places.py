@@ -26,10 +26,8 @@ async def run(selected: list[str], stop_on_error: bool = False, show_progress: b
     unknown = sorted(set(selected) - REGIONS.keys())
     if unknown:
         raise ValueError(f"Unknown region(s): {', '.join(unknown)}")
-    store = MapService(Path("maps"), settings.database_url)
-    await store.initialize()
     totals = {"received": 0, "created": 0, "updated": 0, "failed": 0}
-    try:
+    async with MapService(Path("maps"), settings.database_url) as store:
         regions = tqdm(total=len(selected), desc="Cambodia places", unit="region",
                        dynamic_ncols=True, disable=not show_progress)
         worker_count = max(1, min(workers, len(selected), 8))
@@ -81,8 +79,6 @@ async def run(selected: list[str], stop_on_error: bool = False, show_progress: b
             finally:
                 regions.update(1)
         regions.close()
-    finally:
-        await store.close()
     print(f"Cambodia import finished: {totals}")
 
 

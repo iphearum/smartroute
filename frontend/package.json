@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "framer-motion": "^13.1.0",
-    "maplibre-gl": "5.13.0",
+    "maplibre-gl": "^6.4.1",
     "next": "latest",
     "pmtiles": "^4.5.0",
     "react": "latest",

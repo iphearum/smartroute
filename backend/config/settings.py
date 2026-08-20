@@ -86,6 +86,10 @@ class Settings:
     session_ttl_days: int
     place_cache_ttl_seconds: float
     place_cache_tile_degrees: float
+    ai_base_url: str | None
+    ai_api_key: str | None
+    ai_model: str
+    ai_timeout: float
 
 
 _app_env = os.getenv("APP_ENV", "development").strip().lower()
@@ -112,4 +116,8 @@ settings = Settings(
     session_ttl_days=int(os.getenv("SESSION_TTL_DAYS", "7")),
     place_cache_ttl_seconds=float(os.getenv("PLACE_CACHE_TTL_SECONDS", str(24 * 3600))),
     place_cache_tile_degrees=float(os.getenv("PLACE_CACHE_TILE_DEGREES", "0.05")),
+    ai_base_url=os.getenv("AI_BASE_URL", "http://127.0.0.1:8888/v1").strip().rstrip("/") or None,
+    ai_api_key=os.getenv("AI_API_KEY", "").strip() or None,
+    ai_model=os.getenv("AI_MODEL", "nphearum/PsarAI-2B-GGUF").strip(),
+    ai_timeout=float(os.getenv("AI_TIMEOUT", "45")),
 )

@@ -13,13 +13,9 @@ from config.settings import settings
 
 async def run(args):
     places = await asyncio.to_thread(download_osm_places, args.query)
-    store = MapService(Path("maps"), settings.database_url)
-    await store.initialize()
-    try:
+    async with MapService(Path("maps"), settings.database_url) as store:
         result = await store.import_places(args.country, args.province, places)
         print(f"POI import complete: {result}")
-    finally:
-        await store.close()
 
 
 if __name__ == "__main__":

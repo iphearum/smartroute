@@ -12,10 +12,46 @@ export interface ShopBranchSummary {
   opening_hours: Record<string, unknown>;
   pickup_enabled: boolean;
   delivery_enabled: boolean;
+  active: boolean;
   metadata: Record<string, unknown>;
   place__name: string;
+  place__address: string | null;
   place__latitude: number;
   place__longitude: number;
+  place__status: PlaceStatus;
+  schedules: BranchSchedule[];
+  availability: { status: "open" | "closed" | "disabled"; event: BranchSchedule | null };
+}
+
+export type PlaceStatus =
+  | "active"
+  | "temporarily_closed"
+  | "permanently_closed"
+  | "moved"
+  | "nonexistent"
+  | "disabled";
+
+export type BranchScheduleKind =
+  | "holiday"
+  | "closure"
+  | "fire"
+  | "maintenance"
+  | "event"
+  | "other";
+
+export interface BranchSchedule {
+  id: number;
+  branch_id: number;
+  kind: BranchScheduleKind;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  all_day: boolean;
+  is_closed: boolean;
+  notes: string | null;
+  active: boolean;
+  metadata: Record<string, unknown>;
+  created_at?: string;
 }
 
 export interface StorefrontSummary {
@@ -29,7 +65,11 @@ export interface StorefrontSummary {
 }
 
 export type BusinessStatus = "draft" | "active" | "suspended";
-export type VerificationStatus = "unverified" | "pending" | "verified" | "rejected";
+export type VerificationStatus =
+  | "unverified"
+  | "pending"
+  | "verified"
+  | "rejected";
 
 export interface Business {
   id: number;
@@ -135,4 +175,66 @@ export interface BranchInventoryRow {
   variant__title: string | null;
   variant__product_id: number;
   variant__product__name: string;
+}
+
+export type OrderStatus = "preparing" | "ready" | "completed" | "cancelled";
+export type OrderType = "dine_in" | "takeaway" | "delivery";
+
+export interface DashboardData {
+  daily_sales: Array<{
+    date: string;
+    total_sales: number;
+    order_count: number;
+  }>;
+  recent_orders: Array<{
+    id: number;
+    label: string;
+    type: OrderType;
+    items: string[];
+    total: number;
+    status: OrderStatus;
+    placed_minutes_ago: number;
+  }>;
+  top_sellers: Array<{ name: string; units_sold: number; sales: number }>;
+  low_stock: Array<{
+    variant__product__name: string;
+    variant__title: string | null;
+    quantity_available: number;
+  }>;
+}
+
+export interface StaffMember {
+  id: number;
+  name: string;
+  role: string;
+  hourly_rate: number;
+  hours_this_week: number;
+  clocked_in: boolean;
+  active: boolean;
+}
+
+export interface OrderResult {
+  id: number;
+  order_number: string;
+  order_type: OrderType;
+  status: OrderStatus;
+  subtotal: number;
+  tax: number;
+  total: number;
+  created_at: string;
+  items: Array<{
+    product_name: string;
+    variant_title: string | null;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
+}
+
+export interface PayrollRunResult {
+  id: number;
+  total: number;
+  status: string;
+  period_start: string;
+  period_end: string;
 }

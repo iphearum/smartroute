@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from services.map_models import MapRecord, Place
 from app.services.business_service import BusinessService
+from app.models.exchange_rate import ExchangeRate
 from app.services.exchange_rate_service import ExchangeRateService
 from app.services.inventory_service import InventoryService
 from app.services.product_service import ProductService
@@ -134,8 +135,7 @@ def test_upsert_exchange_rates_updates_same_day_in_place(tmp_path):
             today = date(2026, 8, 19)
             first = [NbcRate("USD", Decimal("4095"), Decimal("4105"), Decimal("4100"))]
             saved = await ExchangeRateService().upsert_exchange_rates(first, effective_date=today)
-            assert len(saved) == 1
-            assert saved[0].average_rate == Decimal("4100.0000")
+            assert saved.data["USD"]["average_rate"] == "4100"
 
             revised = [NbcRate("USD", Decimal("4090"), Decimal("4110"), Decimal("4100"))]
             await ExchangeRateService().upsert_exchange_rates(revised, effective_date=today)
@@ -169,6 +169,7 @@ def test_latest_exchange_rates_only_returns_most_recent_date(tmp_path):
             latest = await ExchangeRateService().latest_exchange_rates()
             assert {row["currency"] for row in latest} == {"USD", "THB"}
             assert all(row["effective_date"] == date(2026, 8, 19) for row in latest)
+            assert await ExchangeRate.all().count() == 2, "one row per day, not per currency"
         finally:
             await store.close()
 

@@ -7,6 +7,7 @@ a live HTTP call or a database.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree
 
@@ -26,6 +27,7 @@ class NbcRate:
     buy_rate: Decimal
     sell_rate: Decimal
     average_rate: Decimal
+    effective_date: date | None = None
 
 
 def _decimal(text: str | None, field: str) -> Decimal:
@@ -37,10 +39,21 @@ def _decimal(text: str | None, field: str) -> Decimal:
         raise NbcExchangeRateError(f"NBC rate has a non-numeric '{field}': {text!r}") from exc
 
 
-def parse_nbc_rates(xml_body: str) -> list[NbcRate]:
-    """Parse the `<rates><rate>...</rate></rates>` document NBC publishes.
+def _date(text: str | None, field: str) -> date:
+    if text is None or not text.strip():
+        raise NbcExchangeRateError(f"NBC rate is missing a value for '{field}'")
+    try:
+        return datetime.strptime(text.strip(), "%m/%d/%Y").date()
+    except ValueError as exc:
+        raise NbcExchangeRateError(f"NBC rate has an unparseable '{field}': {text!r}") from exc
 
-    Searches for `<rate>` anywhere in the document rather than assuming an
+
+def parse_nbc_rates(xml_body: str) -> list[NbcRate]:
+    """Parse the `<ExchangeRate><ex>...</ex></ExchangeRate>` document NBC
+    publishes, e.g. `<ex><date>08/20/2026</date><key>USD/KHR</key>
+    <bid>4044</bid><ask>4044</ask><average>4044.00</average></ex>`.
+
+    Searches for `<ex>` anywhere in the document rather than assuming an
     exact root tag, since that detail isn't part of NBC's documented
     contract and shouldn't be able to break parsing on its own.
     """
@@ -50,8 +63,9 @@ def parse_nbc_rates(xml_body: str) -> list[NbcRate]:
         raise NbcExchangeRateError(f"NBC response is not valid XML: {exc}") from exc
 
     rates: list[NbcRate] = []
-    for node in root.iter("rate"):
-        currency = (node.findtext("currency") or "").strip().upper()
+    for node in root.iter("ex"):
+        key = (node.findtext("key") or "").strip().upper()
+        currency = key.split("/", 1)[0]
         if not currency:
             continue
         rates.append(NbcRate(
@@ -59,9 +73,10 @@ def parse_nbc_rates(xml_body: str) -> list[NbcRate]:
             buy_rate=_decimal(node.findtext("bid"), "bid"),
             sell_rate=_decimal(node.findtext("ask"), "ask"),
             average_rate=_decimal(node.findtext("average"), "average"),
+            effective_date=_date(node.findtext("date"), "date"),
         ))
     if not rates:
-        raise NbcExchangeRateError("NBC response contained no <rate> entries")
+        raise NbcExchangeRateError("NBC response contained no <ex> entries")
     return rates
 
 

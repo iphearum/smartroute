@@ -1,10 +1,14 @@
 """Fetch today's official currency rates from the National Bank of Cambodia
 and upsert them, for display of KHR-equivalent prices in shop/POS UIs.
 
-Intended to run on a daily schedule (cron, systemd timer, or a pm2 cron
-job -- see ecosystem.config.cjs for how this project already runs recurring
-processes), mirroring how the original Laravel `nbc:fetch-exchange-rates`
-artisan command was scheduled.
+Checks the exchange_rates table for today's effective_date before calling
+NBC, so re-running (e.g. a pm2 restart landing the same day as the last
+cron tick) is a cheap DB read instead of a second outbound request; pass
+--force to refetch anyway. Run daily by the "smart-nbc-rates" pm2 app in
+ecosystem.config.cjs, which runs it once immediately on `pm2 start` and
+again every day at 01:00 Phnom Penh time via cron_restart, mirroring how
+the original Laravel `nbc:fetch-exchange-rates` artisan command was
+scheduled.
 """
 
 from __future__ import annotations
@@ -20,25 +24,33 @@ from app.clients.nbc_exchange import NbcExchangeRateError, fetch_nbc_rates
 from config.settings import settings
 
 
-async def run() -> None:
-    store = MapService(Path("maps"), settings.database_url)
-    await store.initialize()
-    try:
+async def run(force: bool = False) -> None:
+    async with MapService(Path("maps"), settings.database_url):
+        service = ExchangeRateService()
+        today = datetime.now(timezone.utc).date()
+        if not force and await service.has_rates_for(today):
+            print(f"Rates for {today} are already cached; skipping NBC request.")
+            return
+
         rates = await asyncio.to_thread(fetch_nbc_rates)
-        saved = await ExchangeRateService().upsert_exchange_rates(
-            rates, effective_date=datetime.now(timezone.utc).date(),
-        )
-        for row in saved:
-            print(f"{row.currency}: buy {row.buy_rate}, sell {row.sell_rate}, "
-                  f"avg {row.average_rate}")
-        print(f"Saved {len(saved)} rate(s).")
-    finally:
-        await store.close()
+        effective_date = rates[0].effective_date or today
+        if not force and effective_date != today and await service.has_rates_for(effective_date):
+            print(f"Rates for {effective_date} (NBC's reported date) are already cached; skipping save.")
+            return
+
+        saved = await service.upsert_exchange_rates(rates, effective_date=effective_date)
+        for currency, values in sorted(saved.data.items()):
+            print(f"{currency}: buy {values['buy_rate']}, sell {values['sell_rate']}, "
+                  f"avg {values['average_rate']}")
+        print(f"Saved {len(saved.data)} rate(s) for {effective_date}.")
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description=__doc__).parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--force", action="store_true",
+                        help="Re-fetch and overwrite even if today's rates are already cached")
+    args = parser.parse_args()
     try:
-        asyncio.run(run())
+        asyncio.run(run(args.force))
     except NbcExchangeRateError as exc:
         raise SystemExit(f"Failed to fetch NBC exchange rates: {exc}")

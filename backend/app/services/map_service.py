@@ -60,6 +60,13 @@ class MapService:
     async def close():
         await Tortoise.close_connections()
 
+    async def __aenter__(self) -> "MapService":
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, *exc_info) -> None:
+        await self.close()
+
     @staticmethod
     def _now():
         return datetime.now(timezone.utc)
@@ -168,7 +175,7 @@ class MapService:
     async def import_places(self, country: str, province: str, places: list[dict[str, Any]]):
         """Upsert externally sourced places by their source/type/id identity."""
         record = await self._map(country, province)
-        existing_rows = await Place.filter(map_id=record.id).values("id", "metadata")
+        existing_rows = await Place.filter(map_id=record.id).values("id", "metadata", "status", "active")
         existing = {}
         for row in existing_rows:
             meta = row.get("metadata") or {}
@@ -195,7 +202,7 @@ class MapService:
             key = (meta.get("source"), meta.get("osm_type"), str(meta.get("osm_id", "")))
             previous = existing.get(key)
             if previous:
-                await Place.filter(id=previous["id"]).update(**item, active=True)
+                await Place.filter(id=previous["id"]).update(**item)
                 updated += 1
             else:
                 await Place.create(map_id=record.id, **item)
@@ -213,13 +220,37 @@ class MapService:
         rows = await queryset.limit(max(20, min(limit * 4, 100))).values(
             "id", "name", "name_base", "base_language", "latitude", "longitude",
             "category", "address", "metadata", "source", "osm_feature_id",
-            "created_at", "updated_at")
+            "status", "moved_to_place_id", "created_at", "updated_at")
         needle = query.casefold()
         def rank(item):
             name = item["name"].casefold()
             return (0 if name == needle else 1 if name.startswith(needle) else 2,
                     0 if item.get("address") else 1, name)
         return sorted(rows, key=rank)[:max(1, min(limit, 100))]
+
+    async def update_place(self, place_id: int, **values) -> Place:
+        place = await Place.get_or_none(id=place_id)
+        if place is None:
+            raise KeyError("Place not found")
+        if values.get("moved_to_place_id") is not None:
+            if values["moved_to_place_id"] == place_id:
+                raise ValueError("A place cannot move to itself")
+            target = await Place.get_or_none(id=values["moved_to_place_id"], map_id=place.map_id)
+            if target is None:
+                raise KeyError("Destination place not found on the same map")
+        if values.get("name") is not None:
+            values["name"] = values["name"].strip()
+        status = values.get("status")
+        if status in {"moved", "nonexistent", "disabled"}:
+            values["active"] = False
+        elif status in {"active", "temporarily_closed", "permanently_closed"}:
+            values["active"] = True
+        for field, value in values.items():
+            if value is not None:
+                setattr(place, field, value)
+        await place.save()
+        self._place_cache.clear()
+        return place
 
     async def places_in_viewport(self, country: str, south: float, west: float,
                                  north: float, east: float, limit: int = 500):
@@ -252,7 +283,7 @@ class MapService:
             rows = await queryset.limit(8000).values(
                 "id", "name", "name_base", "base_language", "latitude", "longitude",
                 "category", "address", "metadata", "source", "osm_feature_id",
-                "map__province_slug",
+                "status", "moved_to_place_id", "map__province_slug",
             )
             self._place_cache.set(country, bounds, rows)
         # The cache stores/queries the whole snapped tile (bigger than what
@@ -456,7 +487,7 @@ class MapService:
         rows = await Place.filter(id=place_id, active=True).values(
             "id", "map_id", "name", "name_base", "address", "address_base",
             "base_language", "latitude", "longitude", "category", "source",
-            "osm_feature_id", "metadata", "created_at", "updated_at",
+            "osm_feature_id", "metadata", "status", "moved_to_place_id", "created_at", "updated_at",
         )
         if not rows:
             raise KeyError("Place not found")

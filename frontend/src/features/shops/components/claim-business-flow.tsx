@@ -11,7 +11,7 @@ import { commerceApi } from "../api/commerce-api";
 
 const businessTypes = ["shop", "restaurant", "cafe", "market_stall", "service"];
 
-export function ClaimBusinessFlow({ onClaimed }: { onClaimed: (businessId: number) => void }) {
+export function ClaimBusinessFlow({ onClaimed }: { onClaimed: () => void }) {
   const user = useAuthStore((s) => s.user);
   const [place, setPlace] = useState<Place | null>(null),
     [query, setQuery] = useState(""),
@@ -33,7 +33,7 @@ export function ClaimBusinessFlow({ onClaimed }: { onClaimed: (businessId: numbe
       });
       await commerceApi.createBranch(business.id, { place_id: place.id });
       toast.success(`${displayName.trim()} is now yours to manage`);
-      onClaimed(business.id);
+      onClaimed();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Could not create your business";
       setError(message);

@@ -13,6 +13,8 @@ export interface Place {
   category?: string | null;
   address?: string | null;
   metadata?: Record<string, unknown>;
+  status?: "active" | "temporarily_closed" | "permanently_closed" | "moved" | "nonexistent" | "disabled";
+  moved_to_place_id?: number | null;
 }
 export type ManeuverType =
   | "depart"

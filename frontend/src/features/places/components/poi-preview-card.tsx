@@ -22,6 +22,7 @@ export function poiPreviewCard(
   classify: (place: Place) => PoiTheme,
   iconMarkup: (theme: PoiTheme) => string,
   onOpenDetails?: () => void,
+  onOpenShopPlatform?: () => void,
 ) {
   const displayName = place.name,
     metadata = place.metadata || {},
@@ -105,7 +106,14 @@ export function poiPreviewCard(
   button.type = "button";
   button.textContent = "＋ Add stop";
   button.addEventListener("click", onAdd);
-  footer.append(source, button);
+  if (onOpenShopPlatform) {
+    const shopButton = document.createElement("button");
+    shopButton.type = "button";
+    shopButton.textContent = "Shop";
+    shopButton.className = "poi-preview-shop-button";
+    shopButton.addEventListener("click", onOpenShopPlatform);
+    footer.append(source, shopButton, button);
+  } else footer.append(source, button);
   body.append(footer);
   card.append(body);
   return card;

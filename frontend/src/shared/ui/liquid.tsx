@@ -93,12 +93,28 @@ export function DraggableLiquidSheet({
   children,
   className,
   ariaLabel = "Details",
+  drag,
+  dragListener,
+  sheetDragControls,
+  dragConstraints,
+  dragElastic,
+  dragMomentum,
+  onDragEnd,
+  style,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   className?: string;
   ariaLabel?: string;
+  drag?: boolean | "x" | "y";
+  dragListener?: boolean;
+  sheetDragControls?: ReturnType<typeof useDragControls>;
+  dragConstraints?: React.ComponentProps<typeof motion.div>["dragConstraints"];
+  dragElastic?: number;
+  dragMomentum?: boolean;
+  onDragEnd?: React.ComponentProps<typeof motion.div>["onDragEnd"];
+  style?: React.ComponentProps<typeof motion.div>["style"];
 }) {
   const [snap, setSnap] = useState<SheetSnap>("half"),
     [mobile, setMobile] = useState(false),
@@ -174,16 +190,24 @@ export function DraggableLiquidSheet({
             }}
             exit={{ opacity: 0, y: mobile ? viewportHeight : -14 }}
             transition={transition}
-            drag={mobile ? "y" : false}
-            dragListener={false}
-            dragControls={dragControls}
-            dragConstraints={{
-              top: snap === "half" ? -halfOffset : 0,
-              bottom: viewportHeight * 0.4,
-            }}
-            dragElastic={0.06}
-            dragMomentum={false}
-            onDragEnd={finishDrag}
+            drag={mobile ? "y" : (drag ?? false)}
+            dragListener={dragListener ?? false}
+            dragControls={sheetDragControls ?? dragControls}
+            dragConstraints={
+              mobile
+                ? {
+                    top: snap === "half" ? -halfOffset : 0,
+                    bottom: viewportHeight * 0.4,
+                  }
+                : (dragConstraints ?? {
+                top: snap === "half" ? -halfOffset : 0,
+                bottom: viewportHeight * 0.4,
+                  })
+            }
+            dragElastic={dragElastic ?? 0.06}
+            dragMomentum={dragMomentum ?? false}
+            onDragEnd={mobile ? finishDrag : (onDragEnd ?? finishDrag)}
+            style={style}
             role="dialog"
             aria-modal="true"
             aria-label={ariaLabel}

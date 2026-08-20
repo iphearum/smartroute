@@ -6,7 +6,8 @@ map registry, places, commerce, and currency concerns in one 757-line class.
 
 from __future__ import annotations
 
-from app.models.commerce import Business, ShopBranch, Storefront
+from app.models.commerce import BranchSchedule, Business, ShopBranch, Storefront
+from app.services.availability_service import AvailabilityService
 from app.models.place import Place
 from app.services.base_service import BaseService
 from app.support.slug import validate_slug
@@ -32,18 +33,43 @@ class BusinessService(BaseService[Business]):
         )
         if not rows:
             raise KeyError("Business not found")
-        result = rows[0]
-        result["branches"] = await ShopBranch.filter(
+        return await self._with_branches_and_storefronts(rows[0])
+
+    async def get_business_for_owner(self, owner_user_id: str) -> dict | None:
+        """The signed-in user's own business, e.g. for GET /commerce/businesses/mine.
+
+        Ownership here is a plain column match, not row-level security -- the
+        caller (CommerceController.my_business) must derive `owner_user_id`
+        from the session cookie, never from client-supplied input.
+        """
+        rows = await self.values(
+            "id", "owner_user_id", "legal_name", "display_name", "business_type",
+            "description", "logo_url", "status", "verification_status", "metadata",
+            "created_at", "updated_at",
+            owner_user_id=owner_user_id,
+        )
+        if not rows:
+            return None
+        return await self._with_branches_and_storefronts(rows[0])
+
+    async def _with_branches_and_storefronts(self, business: dict) -> dict:
+        business_id = business["id"]
+        business["branches"] = await ShopBranch.filter(
             business_id=business_id, active=True,
         ).order_by("id").values(
             "id", "place_id", "name", "phone", "email", "opening_hours",
             "pickup_enabled", "delivery_enabled", "metadata",
-            "place__name", "place__latitude", "place__longitude",
+            "active", "place__name", "place__address", "place__latitude", "place__longitude",
+            "place__status",
         )
-        result["storefronts"] = await Storefront.filter(business_id=business_id).values(
+        availability = AvailabilityService()
+        for branch in business["branches"]:
+            branch["schedules"] = await availability.list_schedules(branch["id"])
+            branch["availability"] = await availability.current_status(branch["id"])
+        business["storefronts"] = await Storefront.filter(business_id=business_id).values(
             "id", "slug", "title", "description", "currency", "theme", "published",
         )
-        return result
+        return business
 
     async def update_business(self, business_id: int, **values) -> Business:
         business = await self.find(business_id)
@@ -64,6 +90,18 @@ class BusinessService(BaseService[Business]):
         if await ShopBranch.filter(business_id=business_id, place_id=place_id).exists():
             raise ValueError("Business already has a branch at this place")
         return await ShopBranch.create(business_id=business_id, place_id=place_id, **values)
+
+    async def update_shop_branch(self, branch_id: int, **values) -> ShopBranch:
+        branch = await ShopBranch.get_or_none(id=branch_id)
+        if branch is None:
+            raise KeyError("Branch not found")
+        if values.get("name") is not None:
+            values["name"] = values["name"].strip()
+        for field, value in values.items():
+            if value is not None:
+                setattr(branch, field, value)
+        await branch.save()
+        return branch
 
     async def create_storefront(self, business_id: int, **values) -> Storefront:
         await self._require(business_id)

@@ -29,7 +29,12 @@ export type IconName =
   | "alert"
   | "trending"
   | "menu"
-  | "chevron-left";
+  | "user"
+  | "spark"
+  | "chevron-left"
+  | "maximize"
+  | "minimize";
+
 const paths: Record<IconName, React.ReactNode> = {
   brand: (
     <>
@@ -176,7 +181,16 @@ const paths: Record<IconName, React.ReactNode> = {
   menu: (
     <path d="M4 6h16M4 12h16M4 18h16" />
   ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" />
+    </>
+  ),
+  spark: <path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Zm6 14 .8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8L18 16Z" />,
   "chevron-left": <path d="m15 5-7 7 7 7" />,
+  maximize: <path d="M8 3H3v5m13-5h5v5M8 21H3v-5m13 5h5v-5" />,
+  minimize: <path d="M4 4h6v2H6v4H4V4Zm10 0h6v6h-2V6h-4V4ZM4 14h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4Z" />,
 };
 export function Icon({
   name,

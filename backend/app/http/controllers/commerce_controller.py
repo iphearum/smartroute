@@ -8,21 +8,27 @@ Each action delegates to a focused service; the per-file `store()` and
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import HTTPException, Request, UploadFile
 from tortoise.exceptions import IntegrityError
 
+from app.http.controllers.auth_controller import AuthController
 from app.http.controllers.base_controller import BaseController
 from app.http.requests.commerce_requests import (BranchCreate, BusinessCreate,
                                                  BusinessUpdate, InventoryUpdate,
                                                  PlaceMediaCreate, ProductCreate,
                                                  ProductUpdate, ProductVariantCreate,
-                                                 ProductVariantUpdate, StorefrontCreate)
+                                                 ProductVariantUpdate, StorefrontCreate,
+                                                 BranchUpdate, OrderCreate, PayrollRunCreate,
+                                                 StaffCreate, StaffUpdate, PlaceUpdate,
+                                                 BranchScheduleCreate)
 from app.services.business_service import BusinessService
 from app.services.exchange_rate_service import ExchangeRateService
 from app.services.inventory_service import InventoryService
 from app.services.product_service import ProductService
+from app.services.operations_service import OperationsService
+from app.services.availability_service import AvailabilityService
 from app.clients.nbc_exchange import NbcExchangeRateError, fetch_nbc_rates
 from app.support.product_import import (MAX_UPLOAD_BYTES, ImportRow, ProductImportError,
                                      parse_products)
@@ -38,6 +44,8 @@ class CommerceController(BaseController[BusinessService]):
         self.products = ProductService()
         self.inventory = InventoryService()
         self.rates = ExchangeRateService()
+        self.operations = OperationsService()
+        self.availability = AvailabilityService()
 
     def _map_store(self, request: Request):
         """Place media/profile still live on MapService (place domain)."""
@@ -56,6 +64,15 @@ class CommerceController(BaseController[BusinessService]):
             return await self.service.get_business(business_id)
         except KeyError as exc:
             raise self.error(exc) from exc
+
+    async def my_business(self, request: Request):
+        user_id = AuthController.current_user_id(request)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        business = await self.service.get_business_for_owner(str(user_id))
+        if business is None:
+            raise HTTPException(status_code=404, detail="No business owned by this account")
+        return business
 
     async def update_business(self, business_id: int, payload: BusinessUpdate):
         try:
@@ -81,6 +98,83 @@ class CommerceController(BaseController[BusinessService]):
             return {"id": storefront.id, "slug": storefront.slug,
                     "published": storefront.published}
         except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def update_branch(self, branch_id: int, payload: BranchUpdate):
+        try:
+            branch = await self.service.update_shop_branch(
+                branch_id, **payload.model_dump(exclude_unset=True),
+            )
+            return {"id": branch.id, "business_id": branch.business_id}
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def list_branch_schedules(self, branch_id: int):
+        try:
+            return await self.availability.list_schedules(branch_id)
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def create_branch_schedule(self, branch_id: int, payload: BranchScheduleCreate):
+        try:
+            event = await self.availability.create_schedule(
+                branch_id, **payload.model_dump(),
+            )
+            return {"id": event.id, "branch_id": branch_id, "kind": event.kind}
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def delete_branch_schedule(self, schedule_id: int):
+        try:
+            await self.availability.delete_schedule(schedule_id)
+            return {"id": schedule_id, "active": False}
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def dashboard(self, business_id: int):
+        try:
+            return await self.operations.dashboard(business_id)
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def create_order(self, business_id: int, payload: OrderCreate):
+        try:
+            return await self.operations.create_order(
+                business_id, payload.branch_id, payload.order_type,
+                [line.model_dump() for line in payload.lines],
+            )
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def list_staff(self, business_id: int):
+        try:
+            return await self.operations.list_staff(business_id)
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def create_staff(self, business_id: int, payload: StaffCreate):
+        try:
+            staff = await self.operations.create_staff(business_id, **payload.model_dump())
+            return {"id": staff.id, "name": staff.name}
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def update_staff(self, staff_id: int, payload: StaffUpdate):
+        try:
+            staff = await self.operations.update_staff(
+                staff_id, **payload.model_dump(exclude_unset=True),
+            )
+            return {"id": staff.id, "name": staff.name}
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
+    async def run_payroll(self, business_id: int, payload: PayrollRunCreate):
+        try:
+            return await self.operations.run_payroll(
+                business_id, date.fromisoformat(payload.period_start),
+                date.fromisoformat(payload.period_end),
+            )
+        except (ValueError, KeyError) as exc:
             raise self.error(exc) from exc
 
     # --- catalog ----------------------------------------------------------
@@ -160,6 +254,15 @@ class CommerceController(BaseController[BusinessService]):
         except DOMAIN_ERRORS as exc:
             raise self.error(exc) from exc
 
+    async def update_place(self, request: Request, place_id: int, payload: PlaceUpdate):
+        try:
+            place = await self._map_store(request).update_place(
+                place_id, **payload.model_dump(exclude_unset=True),
+            )
+            return {"id": place.id, "status": place.status, "active": place.active}
+        except DOMAIN_ERRORS as exc:
+            raise self.error(exc) from exc
+
     # --- bulk import ------------------------------------------------------
     @staticmethod
     def _row_json(row: ImportRow) -> dict:
@@ -224,4 +327,4 @@ class CommerceController(BaseController[BusinessService]):
         saved = await self.rates.upsert_exchange_rates(
             rates, effective_date=datetime.now(timezone.utc).date(),
         )
-        return {"count": len(saved), "currencies": [row.currency for row in saved]}
+        return {"count": len(saved.data), "currencies": sorted(saved.data)}

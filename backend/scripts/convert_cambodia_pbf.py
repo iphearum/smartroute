@@ -1,8 +1,7 @@
 """Read Cambodia province boundaries from OSM PBF for runtime boundary detection.
 
-Note: GraphML file generation and conversion to GraphML format has been removed.
-SmartRoute now uses OSM PBF directly with GraphHopper for all routing operations.
-This module provides province-boundary loading only.
+SmartRoute routes exclusively through GraphHopper + OSM PBF; this module only
+loads province boundaries for that pipeline, not standalone graph conversion.
 """
 
 from __future__ import annotations
@@ -76,19 +75,3 @@ def load_province_boundaries(pbf_path: Path) -> dict[str, Any]:
     return resolved
 
 
-async def run(pbf_path: Path, *args, **kwargs) -> None:
-    raise RuntimeError(
-        "PBF-to-GraphML conversion is no longer supported. "
-        "SmartRoute routes exclusively through GraphHopper + OSM PBF."
-    )
-
-
-if __name__ == "__main__":
-    import sys
-    print(
-        "ERROR: convert_cambodia_pbf.py conversion mode is deprecated.\n"
-        "SmartRoute now uses GraphHopper + OSM PBF exclusively for routing.\n"
-        "To use province boundary detection, call load_province_boundaries() programmatically.",
-        file=sys.stderr,
-    )
-    sys.exit(1)

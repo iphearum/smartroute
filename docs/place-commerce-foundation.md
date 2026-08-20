@@ -9,6 +9,14 @@
 - created manually or by an administrator; or
 - optionally linked to a renewable `osm_features` row through `osm_feature_id`.
 
+Place lifecycle is retained instead of deleting records: `active` controls map
+discoverability, while `status` distinguishes `active`,
+`temporarily_closed`, `permanently_closed`, `moved`, `nonexistent`, and
+`disabled`. A moved place may point to `moved_to_place_id`; this preserves old
+routes, media, and branch history while allowing clients to follow the new
+place. Imported OSM data must not silently reactivate a manually disabled or
+moved place.
+
 Business-owned information is stored separately so replacing the Cambodia PBF
 cannot overwrite storefronts, catalogs, inventory, media, or verification state.
 GraphHopper remains responsible only for routing.
@@ -40,6 +48,10 @@ POST /commerce/products/{product_id}/variants
 PUT  /commerce/branches/{branch_id}/inventory/{variant_id}
 GET  /commerce/places/{place_id}
 POST /commerce/places/{place_id}/media
+PATCH /commerce/places/{place_id}
+GET  /commerce/branches/{branch_id}/schedules
+POST /commerce/branches/{branch_id}/schedules
+DELETE /commerce/schedules/{schedule_id}
 ```
 
 The place profile combines location data, linked shops, media, and 3D models for
@@ -57,14 +69,23 @@ metadata.
 - Product prices use fixed-precision decimal fields rather than floats.
 - Deleting a place is restricted while a shop branch references it.
 - Removing an OSM feature or place clears optional OSM/3D links instead of deleting business data.
+- A place update changes canonical map information; it does not rewrite the
+  merchant branch record. Coordinates must remain within valid latitude and
+  longitude bounds, and a moved destination must belong to the same map.
+- Branch schedules are dated operational overrides. Holidays, maintenance,
+  emergencies (including fire), and other closures override regular hours;
+  the branch remains in the directory so customers can see the reason and
+  expected end time.
 
 ## Current boundary
 
-This foundation intentionally does not implement authentication, checkout,
-payments, orders, delivery assignment, reviews, or merchant moderation. Existing
-write APIs in this project are trusted-administration APIs; authentication and
-ownership authorization must be added before exposing commerce mutations to the
-public internet. `owner_user_id` is an opaque future identity link, not an
+This foundation intentionally does not implement public checkout, payment
+settlement, delivery assignment, reviews, or merchant moderation. The merchant
+workspace now has a persisted POS order ledger, staff records, and payroll runs;
+these are not yet customer-facing commerce flows. Existing write APIs in this
+project are trusted-administration APIs; authentication and ownership
+authorization must be added before exposing commerce mutations to the public
+internet. `owner_user_id` is an opaque future identity link, not an
 authorization boundary yet.
 
 ## Next phases

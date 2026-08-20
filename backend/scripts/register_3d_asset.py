@@ -11,9 +11,7 @@ from config.settings import settings
 
 
 async def run(args) -> None:
-    store = MapService(Path("maps"), settings.database_url)
-    await store.initialize()
-    try:
+    async with MapService(Path("maps"), settings.database_url) as store:
         asset = await store.register_three_d_asset(
             args.country, args.province, name=args.name, model_url=args.model_url,
             latitude=args.latitude, longitude=args.longitude, altitude=args.altitude,
@@ -21,8 +19,6 @@ async def run(args) -> None:
             rotation_z=args.rotation_z, scale=args.scale,
         )
         print(f"3D asset registered: id={asset.id}, name={asset.name!r}")
-    finally:
-        await store.close()
 
 
 if __name__ == "__main__":

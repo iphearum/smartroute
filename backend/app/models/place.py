@@ -23,6 +23,11 @@ class Place(models.Model):
     category = fields.CharField(max_length=100, null=True)
     address = fields.TextField(null=True)
     metadata = fields.JSONField(default=dict, source_field="metadata_json")
+    status = fields.CharField(max_length=32, default="active")
+    moved_to_place = fields.ForeignKeyField(
+        "models.Place", related_name="moved_from_places", source_field="moved_to_place_id",
+        null=True, on_delete=fields.SET_NULL,
+    )
     active = fields.BooleanField(default=True)
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)

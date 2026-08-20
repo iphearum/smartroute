@@ -2,11 +2,17 @@ import { api } from "@/shared/api/http";
 import type {
   Business,
   BranchInventoryRow,
+  BranchSchedule,
   ExchangeRateRow,
   ImportCommitResult,
   ImportPreviewResult,
   InventoryItem,
   Product,
+  DashboardData,
+  OrderResult,
+  PayrollRunResult,
+  StaffMember,
+  PlaceStatus,
 } from "../domain/commerce-types";
 
 export const commerceApi = {
@@ -23,6 +29,130 @@ export const commerceApi = {
 
   getBusiness: (businessId: number) =>
     api<Business>(`/commerce/businesses/${businessId}`),
+
+  myBusiness: () => api<Business>("/commerce/businesses/mine"),
+
+  dashboard: (businessId: number) =>
+    api<DashboardData>(`/commerce/businesses/${businessId}/dashboard`),
+
+  updateBranch: (
+    branchId: number,
+    payload: Partial<{
+      name: string;
+      phone: string;
+      email: string;
+      opening_hours: Record<string, unknown>;
+      pickup_enabled: boolean;
+      delivery_enabled: boolean;
+      active: boolean;
+      metadata: Record<string, unknown>;
+    }>,
+  ) =>
+    api<{ id: number; business_id: number }>(`/commerce/branches/${branchId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  updatePlace: (
+    placeId: number,
+    payload: Partial<{
+      name: string;
+      address: string;
+      category: string;
+      latitude: number;
+      longitude: number;
+      status: PlaceStatus;
+      moved_to_place_id: number;
+    }>,
+  ) =>
+    api<{ id: number; status: PlaceStatus; active: boolean }>(`/commerce/places/${placeId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  listBranchSchedules: (branchId: number) =>
+    api<BranchSchedule[]>(`/commerce/branches/${branchId}/schedules`),
+
+  createBranchSchedule: (
+    branchId: number,
+    payload: {
+      kind: BranchSchedule["kind"];
+      title: string;
+      starts_at: string;
+      ends_at: string;
+      all_day: boolean;
+      is_closed: boolean;
+      notes?: string;
+    },
+  ) =>
+    api<{ id: number; branch_id: number; kind: BranchSchedule["kind"] }>(
+      `/commerce/branches/${branchId}/schedules`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+
+  deleteBranchSchedule: (scheduleId: number) =>
+    api<{ id: number; active: boolean }>(`/commerce/schedules/${scheduleId}`, {
+      method: "DELETE",
+    }),
+
+  createOrder: (
+    businessId: number,
+    payload: {
+      branch_id: number;
+      order_type: "dine_in" | "takeaway" | "delivery";
+      lines: Array<{ variant_id: number; quantity: number }>;
+    },
+  ) =>
+    api<OrderResult>(`/commerce/businesses/${businessId}/orders`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  listStaff: (businessId: number) =>
+    api<StaffMember[]>(`/commerce/businesses/${businessId}/staff`),
+
+  createStaff: (
+    businessId: number,
+    payload: {
+      name: string;
+      role: string;
+      hourly_rate: number;
+      hours_this_week: number;
+      clocked_in: boolean;
+    },
+  ) =>
+    api<{ id: number; name: string }>(
+      `/commerce/businesses/${businessId}/staff`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
+
+  updateStaff: (
+    staffId: number,
+    payload: Partial<{
+      name: string;
+      role: string;
+      hourly_rate: number;
+      hours_this_week: number;
+      clocked_in: boolean;
+      active: boolean;
+    }>,
+  ) =>
+    api<{ id: number; name: string }>(`/commerce/staff/${staffId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  runPayroll: (
+    businessId: number,
+    payload: { period_start: string; period_end: string },
+  ) =>
+    api<PayrollRunResult>(`/commerce/businesses/${businessId}/payroll/runs`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   updateBusiness: (
     businessId: number,
