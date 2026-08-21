@@ -145,6 +145,13 @@
 .route-planner-header strong {
   letter-spacing: -0.025em;
 }
+.route-planner-header {
+  cursor: grab;
+  touch-action: none;
+}
+.route-planner-header:active {
+  cursor: grabbing;
+}
 .route-planner-drag-handle {
   display: grid;
   width: 24px;

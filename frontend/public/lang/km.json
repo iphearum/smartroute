@@ -21,7 +21,6 @@
     "locate": "ទីតាំង",
     "placeData": "ទិន្នន័យទីកន្លែង",
     "nodeIds": "លេខសម្គាល់ Node",
-    "directions": "ទិសដៅ",
     "openShops": "បើកវេទិកាហាង និងភោជនីយដ្ឋាន",
     "categories": {
       "cafe": "☕ ហាងកាហ្វេ",
@@ -42,20 +41,33 @@
       "interactiveMap": "ផែនទីផ្លូវអន្តរកម្ម"
     },
     "tools": {
-      "title": "ឧបករណ៍ផែនទី",
+      "title": "ផែនទី",
       "clearRoute": "លុបផ្លូវ",
       "focusRoute": "ផ្តោតលើផ្លូវ",
       "resetView": "កំណត់ផែនទីឡើងវិញ",
-      "confirmClear": "លុបផ្លូវបច្ចុប្បន្នមែនទេ?"
+      "confirmTitle": "លុបផ្លូវមែនទេ?",
+      "confirmDescription": "វានឹងលុបចំណុចផ្លូវ និងទិសដៅទាំងអស់។",
+      "confirmAction": "លុបផ្លូវ"
     }
   },
   "assistant": {
     "initialMessage": "ប្រាប់ខ្ញុំថាអ្នកចង់ស្វែងរកអ្វី ឬចង់ទៅទីណា។ ខ្ញុំនឹងដាក់វានៅលើផែនទី។",
     "placeholder": "ផ្ញើសារទៅ PsarAI…",
     "thinking": "កំពុងគិត…",
+    "thought": "បានគិតរួច",
+    "usedTools": "បានប្រើ",
+    "toolSingular": "ឧបករណ៍",
+    "toolPlural": "ឧបករណ៍",
     "thinkingMode": "របៀបគិត",
     "thinkingEnabled": "បានបើករបៀបគិត",
     "thinkingModeDescription": "ប្រើការគិតបន្ថែមសម្រាប់សំណួរស្មុគស្មាញ",
+    "reasoningAuto": "គិតស្វ័យប្រវត្តិ",
+    "reasoningHigh": "គិតជានិច្ច",
+    "reasoningOff": "មិនគិត",
+    "reasoningAutoDescription": "ការគិតមានតុល្យភាពសម្រាប់សំណើភាគច្រើន",
+    "reasoningHighDescription": "ការគិតជ្រៅសម្រាប់កិច្ចការស្មុគស្មាញ",
+    "reasoningOffDescription": "ឆ្លើយតបដោយមិនបន្ថែមការគិត",
+    "reasoningModeDescription": "ការគិត៖ បិទ ស្វ័យប្រវត្តិ ឬបើកជានិច្ច",
     "hiddenReasoning": "កំពុងដំណើរការសំណើ…",
     "copyThinking": "ចម្លងសេចក្តីសង្ខេបការគិត",
     "searchSources": "លទ្ធផលស្វែងរក",
@@ -103,6 +115,7 @@
     "contextUsage": "បរិបទ"
   },
   "routes": {
+    "title": "ជ្រើសរើសផ្លូវរបស់អ្នក",
     "travelTime": "រយៈពេលធ្វើដំណើរ",
     "minutes": "នាទី",
     "distance": "ចម្ងាយ",

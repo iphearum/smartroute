@@ -34,6 +34,7 @@ import type {
   ChatItem,
   PendingToolCall,
   PermissionMode,
+  ReasoningMode,
 } from "./assistant-types";
 import { useAssistantSessions } from "../hooks/use-assistant-sessions";
 import {
@@ -54,6 +55,8 @@ import {
 /** Ids of the dock panels below; `chat` is the default view. */
 type AsideView = "chat" | "shops";
 const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+const isReasoningMode = (value: unknown): value is ReasoningMode =>
+  value === "off" || value === "auto" || value === "high";
 
 export function AiMapAssistant({
   onOpenChange,
@@ -71,19 +74,20 @@ export function AiMapAssistant({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
+  const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false);
   const [permissionMode, setPermissionMode] =
     useState<PermissionMode>("automatic");
-  const [thinkingEnabled, setThinkingEnabled] = useLocalStore(
-    "smartroute-ai-thinking-enabled",
-    false,
-    isBoolean,
+  const [reasoningMode, setReasoningMode] = useLocalStore<ReasoningMode>(
+    "smartroute-ai-reasoning-mode",
+    "auto",
+    isReasoningMode,
   );
   const [audioResponseEnabled, setAudioResponseEnabled] = useLocalStore(
     "smartroute-ai-audio-response-enabled",
     false,
     isBoolean,
   );
-  const [activity, setActivity] = useState<AssistantActivity | null>(null);
+  const [turnActivities, setTurnActivities] = useState<AssistantActivity[]>([]);
   const permissionModeRef = useRef(permissionMode);
   const [pendingToolCall, setPendingToolCall] =
     useState<PendingToolCall | null>(null);
@@ -113,6 +117,7 @@ export function AiMapAssistant({
   const unfinishedTextRef = useRef(new Map<string, string>());
   const unfinishedReasoningRef = useRef(new Map<string, string>());
   const turnActivitiesRef = useRef<AssistantActivity[]>([]);
+  const reasoningRoundBreakRef = useRef(false);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const language = useAppShell((state) => state.language);
@@ -129,10 +134,50 @@ export function AiMapAssistant({
     if (!audioResponseEnabled) stopAssistantSpeech();
   }, [audioResponseEnabled]);
 
+  const commitActivities = (activities: AssistantActivity[]) => {
+    turnActivitiesRef.current = activities;
+    setTurnActivities(activities);
+  };
+
   const recordActivity = (next: Omit<AssistantActivity, "active">) => {
-    const activity = { ...next, active: true };
-    turnActivitiesRef.current = [...turnActivitiesRef.current, activity];
-    setActivity(activity);
+    commitActivities([...turnActivitiesRef.current, { ...next, active: true }]);
+  };
+
+  /** Close out the step a tool result belongs to instead of adding a row. */
+  const resolveActivity = (toolCallId: string, status: "done" | "error") => {
+    commitActivities(
+      turnActivitiesRef.current.map((item) =>
+        item.toolCallId === toolCallId
+          ? { ...item, active: false, status }
+          : item,
+      ),
+    );
+  };
+
+  /** Stream the reasoning summary into the open thinking step. */
+  const updateThinkingDetail = (detail: string) => {
+    const activities = turnActivitiesRef.current;
+    const index = activities.findIndex(
+      (item) => item.kind === "thinking" && item.active !== false,
+    );
+    if (index < 0) {
+      commitActivities([
+        ...activities,
+        {
+          kind: "thinking",
+          label: "Thinking…",
+          startedAt: Date.now(),
+          active: true,
+          detail,
+        },
+      ]);
+      return;
+    }
+    commitActivities(
+      activities.map((item, position) =>
+        position === index ? { ...item, detail } : item,
+      ),
+    );
   };
 
   const handleAsideOpenChange = (open: boolean) => {
@@ -146,7 +191,7 @@ export function AiMapAssistant({
       top: threadRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages]);
+  }, [messages, turnActivities]);
 
   useEffect(() => {
     if (!asideOpen || asideView !== "shops") return;
@@ -178,9 +223,8 @@ export function AiMapAssistant({
     streamAbort.current?.abort();
     streamAbort.current = null;
     setBusy(false);
-    setActivity(null);
     stopAssistantSpeech();
-    turnActivitiesRef.current = [];
+    commitActivities([]);
     streamingMessageId.current = null;
   }, [asideOpen]);
 
@@ -193,6 +237,11 @@ export function AiMapAssistant({
       ...item,
       active: false,
     }));
+    // A turn that only ran tools has no prose to show; "I’m ready." reads as
+    // if nothing happened, so the completed work is acknowledged instead.
+    const fallback = activities.some((item) => item.kind === "tool")
+      ? "Done — the map is updated."
+      : "I’m ready.";
     setMessages((current) => {
       const existing = id
         ? current.findIndex((message) => message.id === id)
@@ -204,7 +253,7 @@ export function AiMapAssistant({
               {
                 id: id ?? undefined,
                 role: "assistant" as const,
-                text: frame.data?.message || unfinished || "I’m ready.",
+                text: frame.data?.message || unfinished || fallback,
                 reasoning: reasoning || undefined,
                 action: frame.data?.action,
                 activities,
@@ -227,10 +276,9 @@ export function AiMapAssistant({
     });
     if (id) unfinishedTextRef.current.delete(id);
     if (id) unfinishedReasoningRef.current.delete(id);
-    turnActivitiesRef.current = [];
+    commitActivities([]);
     streamingMessageId.current = null;
     setBusy(false);
-    setActivity(null);
   };
 
   const submitToolResult = async (
@@ -238,6 +286,21 @@ export function AiMapAssistant({
     toolCallId: string,
     result: Parameters<typeof assistantApi.submitToolResult>[2],
   ) => {
+    // The result has to go back over the transport that asked for it. A socket
+    // turn is waiting on a frame, and the HTTP bridge has no stream registered
+    // for it, so posting there answers nobody and stalls the turn until the
+    // backend's tool timeout expires.
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(
+        JSON.stringify({
+          type: "assistant.tool_result",
+          id: toolCallId,
+          data: result,
+        }),
+      );
+      return;
+    }
     await assistantApi.submitToolResult(streamId, toolCallId, result);
   };
 
@@ -265,7 +328,11 @@ export function AiMapAssistant({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Tool execution failed";
-      await submitToolResult(streamId, toolCallId, { error: message });
+      try {
+        await submitToolResult(streamId, toolCallId, { error: message });
+      } catch (submitError) {
+        console.error("Assistant tool result was not delivered", submitError);
+      }
     }
   };
 
@@ -286,7 +353,9 @@ export function AiMapAssistant({
     if (!pendingToolCall || !pendingToolCall.frameId) return;
     void submitToolResult(pendingToolCall.frameId, pendingToolCall.toolCallId, {
       error: "The user declined this map action.",
-    });
+    }).catch((error) =>
+      console.error("Assistant tool result was not delivered", error),
+    );
     setPendingToolCall(null);
   };
 
@@ -298,7 +367,8 @@ export function AiMapAssistant({
         unfinishedReasoningRef,
         streamingMessageId,
         setMessages,
-        setActivity,
+        updateThinkingDetail,
+        reasoningRoundBreakRef,
       );
       return;
     }
@@ -319,6 +389,8 @@ export function AiMapAssistant({
       const toolCallId = event.toolCallId;
       if (!toolCallId || !name) return;
       const arguments_ = event.arguments || {};
+      // A tool round ends the current thought; the next one starts a paragraph.
+      reasoningRoundBreakRef.current = true;
       const requiresApproval =
         name !== "search_places" &&
         name !== "search_web" &&
@@ -333,7 +405,9 @@ export function AiMapAssistant({
       } else if (permissionModeRef.current === "disabled") {
         void submitToolResult(streamId, toolCallId, {
           error: "Assistant map tools are disabled.",
-        });
+        }).catch((error) =>
+          console.error("Assistant tool result was not delivered", error),
+        );
       } else {
         void executeToolCall(streamId, toolCallId, name, arguments_);
       }
@@ -341,7 +415,6 @@ export function AiMapAssistant({
     }
     if (event.type === "done") {
       if (audioResponseEnabledRef.current) finishStreamingSpeech();
-      setActivity(null);
       finishAssistantMessage({
         id: streamId,
         data: {
@@ -362,19 +435,22 @@ export function AiMapAssistant({
     const data = frame.data || {};
     if (frame.type === "assistant.activity") {
       const kind = data.kind === "tool" ? "tool" : "thinking";
-      if (kind === "tool") {
+      const toolCallId =
+        typeof data.toolCallId === "string" ? data.toolCallId : undefined;
+      if (data.status === "done" || data.status === "error") {
+        if (toolCallId) resolveActivity(toolCallId, data.status);
+        return;
+      }
+      const alreadyThinking =
+        kind === "thinking" &&
+        turnActivitiesRef.current.some((item) => item.kind === "thinking");
+      if (!alreadyThinking) {
         recordActivity({
           kind,
-          label: String(data.label || "Using a tool"),
+          label: String(data.label || (kind === "tool" ? "Using a tool" : "Thinking…")),
           detail: typeof data.detail === "string" ? data.detail : undefined,
           startedAt: Date.now(),
-        });
-      } else {
-        setActivity({
-          kind: "thinking",
-          label: String(data.label || "Thinking…"),
-          detail: typeof data.detail === "string" ? data.detail : undefined,
-          startedAt: Date.now(),
+          toolCallId,
         });
       }
       return;
@@ -386,18 +462,14 @@ export function AiMapAssistant({
       });
       return;
     }
-    const eventType =
-      frame.type === "assistant.delta"
-        ? "content"
-        : frame.type === "assistant.reasoning_delta"
-          ? "reasoning"
-          : frame.type === "assistant.tool_call"
-            ? "tool"
-            : frame.type === "assistant.usage"
-              ? "usage"
-              : frame.type === "assistant.done"
-                ? "done"
-                : null;
+    const eventTypeMap = {
+      "assistant.delta": "content",
+      "assistant.reasoning_delta": "reasoning",
+      "assistant.tool_call": "tool",
+      "assistant.usage": "usage",
+      "assistant.done": "done",
+    } as const;
+    const eventType = eventTypeMap[frame.type as keyof typeof eventTypeMap] ?? null;
     if (!eventType) return;
     handleStreamEvent(streamId, {
       type: eventType,
@@ -450,14 +522,8 @@ export function AiMapAssistant({
     streamingMessageId.current = clientId;
     unfinishedTextRef.current.set(clientId, "");
     unfinishedReasoningRef.current.set(clientId, "");
-    turnActivitiesRef.current = [];
-    if (thinkingEnabled) {
-      recordActivity({
-        kind: "thinking",
-        label: "Thinking…",
-        startedAt: Date.now(),
-      });
-    }
+    commitActivities([]);
+    reasoningRoundBreakRef.current = false;
     if (audioResponseEnabledRef.current) beginStreamingSpeech();
     const userMessage: ChatItem = {
       id: `user-${clientId}`,
@@ -486,7 +552,7 @@ export function AiMapAssistant({
           type: "chat.message",
           clientId,
           language: languageRef.current,
-          thinking: thinkingEnabled,
+          reasoningMode,
           text,
           messages: contextPayload(nextMessages),
           attachments: messageAttachments.map(
@@ -503,7 +569,6 @@ export function AiMapAssistant({
       );
     } catch (error) {
       if (!controller.signal.aborted) {
-        setActivity(null);
         stopAssistantSpeech();
         console.error("Assistant stream failed", error);
         finishAssistantMessage({
@@ -797,7 +862,7 @@ export function AiMapAssistant({
             onDelete={deleteMessage}
             onEdit={editMessage}
             onBranch={branchFromMessage}
-            activity={activity}
+            activities={turnActivities}
           />
           <AssistantComposer
             input={input}
@@ -812,8 +877,10 @@ export function AiMapAssistant({
             setPermissionMenuOpen={setPermissionMenuOpen}
             permissionMode={permissionMode}
             setPermissionMode={setPermissionMode}
-            thinkingEnabled={thinkingEnabled}
-            setThinkingEnabled={setThinkingEnabled}
+            reasoningMode={reasoningMode}
+            setReasoningMode={setReasoningMode}
+            thinkingMenuOpen={thinkingMenuOpen}
+            setThinkingMenuOpen={setThinkingMenuOpen}
             audioResponseEnabled={audioResponseEnabled}
             setAudioResponseEnabled={setAudioResponseEnabled}
             fileInputRef={fileInputRef}
@@ -928,24 +995,30 @@ function appendReasoningDelta(
   unfinishedReasoningRef: React.MutableRefObject<Map<string, string>>,
   streamingMessageId: React.MutableRefObject<string | null>,
   setMessages: React.Dispatch<React.SetStateAction<ChatItem[]>>,
-  setActivity: React.Dispatch<React.SetStateAction<AssistantActivity | null>>,
+  updateThinkingDetail: (detail: string) => void,
+  reasoningRoundBreakRef: React.MutableRefObject<boolean>,
 ) {
   if (!frame.data) return;
   const id = frame.id || streamingMessageId.current;
   const delta = frame.data.text || frame.data.delta || "";
   if (!id || !delta) return;
-  const reasoning = `${unfinishedReasoningRef.current.get(id) || ""}${delta}`;
+  const previous = unfinishedReasoningRef.current.get(id) || "";
+  const separator = reasoningRoundBreakRef.current && previous ? "\n\n" : "";
+  reasoningRoundBreakRef.current = false;
+  const reasoning = `${previous}${separator}${delta}`;
   unfinishedReasoningRef.current.set(id, reasoning);
-  setActivity((current) =>
-    current?.kind === "thinking" ? { ...current, detail: reasoning } : current,
+  // Reasoning arrives before the first answer token, so the thinking step is
+  // opened here when the turn has no activity of its own yet.
+  updateThinkingDetail(reasoning);
+  const existing = messagesRef.current.findIndex(
+    (message) => message.id === id,
   );
-  const next = messagesRef.current.map((message) =>
-    message.id === id ? { ...message, reasoning } : message,
+  if (existing < 0) return;
+  const next = messagesRef.current.map((message, index) =>
+    index === existing ? { ...message, reasoning } : message,
   );
-  if (next !== messagesRef.current) {
-    messagesRef.current = next;
-    setMessages(next);
-  }
+  messagesRef.current = next;
+  setMessages(next);
 }
 
 type AssistantFrame = {

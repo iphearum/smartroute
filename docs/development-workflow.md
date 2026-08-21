@@ -64,14 +64,14 @@ The audit intentionally leaves MapLibre paint configuration, manifest metadata,
 POI category accents, and fixed illustration SVG fills as local integration or
 visual data rather than UI theme roles.
 
-The expanded route planner uses the same primitives: a `LiquidCard` popover contains a pill-shaped `LiquidSwitch` for travel modes, softly separated point cards, and liquid secondary actions. Active mode and point states use the shared active surface instead of underline tabs or stark white focus cards. Preserve route calculation, endpoint editing, search, geolocation, and swapping behavior when changing this presentation. On desktop, the planner is a constrained liquid window: only its dedicated header handle starts horizontal/vertical dragging, so inputs and actions remain interactive; its JSON position is persisted under `smartroute-window-position:route-planner-window` and clamped when the viewport changes.
+The route planner uses the same primitives: a `LiquidCard` popover contains a pill-shaped `LiquidSwitch` for travel modes, softly separated point cards, and liquid secondary actions. Active mode and point states use the shared active surface instead of underline tabs or stark white focus cards. Preserve route calculation, endpoint editing, search, geolocation, and swapping behavior when changing this presentation. Opening Directions registers the `route-planner` sheet in the shared bottom-sheet state with its base title; the shared `BottomSheet` renders the `DraggableLiquidSheet` chrome and keeps the planner mounted while its content remains feature-owned. On desktop, the planner is a constrained liquid window: only its dedicated header handle starts horizontal/vertical dragging, so inputs and actions remain interactive; its JSON position is persisted under `smartroute-window-position:route-planner-window` and clamped when the viewport changes.
 
 The combined car-and-motorbike mode uses one purpose-built, low-detail SVG with
 a car, transition arrow, and motorbike on a shared viewBox. Keep this reusable
 icon readable at the route switch's 26-by-19-pixel size; do not overlap the two
 full vehicle icons or depend on an external image.
 
-Use `DraggableLiquidSheet` from `frontend/src/shared/ui/liquid.tsx` when a dense card must become a mobile bottom sheet. It uses `framer-motion` for `AnimatePresence`, spring-based edge-aware enter/exit motion, handle-only vertical dragging, velocity-aware swipe dismissal, and reduced-motion support. It remains a normal liquid popover above 820px; on mobile it adds a dismissible glass overlay, half and full snap positions, Escape dismissal, and keyboard-accessible snap controls. Keep dragging restricted to the handle so form fields and scrolling inside the card remain usable. Desktop popovers move from the nearest top edge, mobile sheets move from the nearest bottom edge, and the overlay fades in sync. Its owner must establish a stacking context above MapLibre's control and marker layers so zoom, attribution, markers, and other map-native controls cannot render through the overlay or card during the entire exit transition.
+Use `DraggableLiquidSheet` from `frontend/src/shared/ui/liquid.tsx` when a dense card must become a mobile bottom sheet. It uses `framer-motion` for `AnimatePresence`, spring-based edge-aware enter/exit motion, handle-only vertical dragging, velocity-aware swipe dismissal, and reduced-motion support. It remains a normal liquid popover above 820px; on mobile it adds a dismissible translucent overlay, half and full snap positions, Escape dismissal, and keyboard-accessible snap controls. Keep dragging restricted to the handle so form fields and scrolling inside the card remain usable. Desktop popovers move from the nearest top edge, mobile sheets move from the nearest bottom edge, and the overlay fades in sync without blurring the map. Its owner must establish a stacking context above MapLibre's control and marker layers so zoom, attribution, markers, and other map-native controls cannot render through the overlay or card during the entire exit transition.
 
 Map-native overlays that cannot render React components, including route-time labels, must consume the same `--liquid-*` tokens for their surface, pointer, active state, border, and shadow.
 
@@ -115,17 +115,31 @@ The map workspace rail exposes real user actions: Explore is the default map
 view, Locate requests browser location, Place data opens the place-data surface,
 Directions opens the route planner, and Map tools contains Clear route, Focus
 route, and Reset map. Focus is disabled when no route exists; clearing a route
-requires confirmation. Keep these actions routed through the existing map
-command events so the rail, assistant menu, and right-side controls share one
-behavior owner.
+opens the themed in-app alert dialog in the shared draggable liquid sheet, using
+the same inset rounded mobile shell as the route planner and a feature-owned
+confirmation child, and requires explicit confirmation before dispatching the
+clear command. Keep these actions routed through the existing
+map command events so the rail, assistant menu, and right-side controls share
+one behavior owner.
 
 ## Progressive web app
 
 The frontend publishes `/manifest.webmanifest` from `frontend/src/app/manifest.ts`, registers `frontend/public/sw.js` from the root layout in production, and provides 192px, 512px, and Apple touch icons under `frontend/public/icons/`. Installed launches use standalone display mode and a translucent iOS status bar so the map remains the primary full-screen canvas. Development mode unregisters existing workers and clears `psarai-shell-*` caches because Turbopack can reuse chunk URLs; a cache-first development chunk can otherwise combine stale client code with fresh server HTML and cause hydration failures. In production, static assets use network-first delivery with cached offline fallback, and changing cache behavior requires incrementing `CACHE_NAME` so old entries are removed during activation. The local PMTiles archive and CARTO tiles remain outside Cache Storage. Online mode uses normal browser HTTP caching for CARTO and makes no PMTiles request. Hybrid mode uses HTTP range and in-memory caching for PMTiles and requests CARTO only when the local viewport rule does not cover the view.
 
+For the production host, `deploy/nginx/psarai.com.conf` is the reverse-proxy
+template: HTTPS serves Next.js on `127.0.0.1:3100`, `/api/backend/*` remains
+same-origin through Next.js, and `/ws/assistant` upgrades directly to FastAPI
+on `127.0.0.1:8100`. Install it under `/etc/nginx/sites-available`, link it
+into `sites-enabled`, run `nginx -t`, and reload Nginx after confirming the
+Let's Encrypt certificate paths.
+
 ## Shared application state
 
 `frontend/src/app/layout.tsx` is the root composition owner and mounts `AppShellProvider` from `frontend/src/shared/state/app-shell-context.tsx`. The provider creates a scoped Zustand vanilla store for cross-feature UI state: navigation selection, dock collapse, POI filters, language preference, map-layer visibility, and Place Data modal visibility. Language and map-layer preferences persist in browser local storage. Components consume individual state slices through selector calls such as `useAppShell((state) => state.language)`; do not subscribe to the entire store, duplicate shared state locally, or coordinate it through window events. In particular, never read `localStorage` or branch on `window` during render: the server and first client render must use the same store defaults, then the provider hydrates persisted preferences after mount. The scoped provider prevents state leakage between layout trees, and the layout remains a server component so Next.js metadata exports continue to work.
+
+The same store owns the active shared bottom sheet as `{ id, title }`; use the
+`BottomSheet` wrapper from `shared/ui/bottom-sheet.tsx` for sheet chrome and
+open or close it through the store instead of duplicating local open state.
 
 Reusable client preferences use `useLocalStore` from
 `frontend/src/shared/hooks/use-local-store.ts`. It keeps the supplied default for

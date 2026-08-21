@@ -193,9 +193,7 @@ function renderLines(lines: string[]): ReactNode[] {
 }
 
 export function MarkdownMessage({ value }: { value: string }) {
-  const lines = removeAssistantProtocol(value.replace(/\r\n?/g, "\n")).split(
-    "\n",
-  );
+  const lines = removeAssistantProtocol(value.replace(/\r\n?/g, "\n")).split("\n");
   const blocks: ReactNode[] = [];
   let normalLines: string[] = [];
   let codeLines: string[] = [];

@@ -16,11 +16,9 @@ import { PlaceResults } from "@/features/search/components/place-results";
 import { usePlaceSearch } from "@/features/search/hooks/use-place-search";
 import { useRecentPlaces } from "@/features/search/hooks/use-recent-places";
 import { Icon } from "@/shared/ui/icon";
-import {
-  DraggableLiquidSheet,
-  LiquidCard,
-  LiquidSwitch,
-} from "@/shared/ui/liquid";
+import { LiquidCard, LiquidSwitch } from "@/shared/ui/liquid";
+import { BottomSheet } from "@/shared/ui/bottom-sheet";
+import { useAppShell } from "@/shared/state/app-shell-context";
 import { PinLocation } from "@/shared/ui/pin";
 import { useLocalStore } from "@/shared/hooks/use-local-store";
 import { useWindowSession } from "@/shared/hooks/use-window-session";
@@ -57,8 +55,7 @@ export function RoutePanel({
   onToggleSidebar?: () => void;
   language?: MapLanguage;
 }) {
-  const [expanded, setExpanded] = useState(false),
-    [showDetails, setShowDetails] = useState(false),
+  const [showDetails, setShowDetails] = useState(false),
     [focused, setFocused] = useState<number | null>(null),
     [drafts, setDrafts] = useState<Record<number, string>>({});
   const dragBoundsRef = useRef<HTMLDivElement>(null),
@@ -77,12 +74,6 @@ export function RoutePanel({
   useEffect(() => {
     if (windowSessionReady && !windowSession.open) setWindowOpen(true);
   }, [setWindowOpen, windowSession.open, windowSessionReady]);
-  useEffect(() => {
-    const openPlanner = () => setExpanded(true);
-    window.addEventListener("smartroute:open-route-planner", openPlanner);
-    return () =>
-      window.removeEventListener("smartroute:open-route-planner", openPlanner);
-  }, []);
   const points = useRouteStore((s) => s.points),
     coordinates = useRouteStore((s) => s.coordinates),
     activePoint = useRouteStore((s) => s.activePoint),
@@ -103,6 +94,15 @@ export function RoutePanel({
     isTravelMode,
   );
   const t = useI18n();
+  const activeSheet = useAppShell((state) => state.bottomSheet),
+    openBottomSheet = useAppShell((state) => state.openBottomSheet),
+    closeBottomSheet = useAppShell((state) => state.closeBottomSheet);
+  const expanded = activeSheet?.id === "route-planner";
+  const openPlanner = () =>
+    openBottomSheet({
+      id: "route-planner",
+      title: t("routes.title", "Choose your route"),
+    });
   const routeStops = points.filter((point): point is Place => Boolean(point));
 
   useEffect(() => setMode(savedMode), [savedMode, setMode]);
@@ -150,10 +150,10 @@ export function RoutePanel({
     });
     recent.remember(place);
     setFocused(null);
-    if (index > 0) setExpanded(true);
+    if (index > 0) openPlanner();
   };
   const focus = (index: number) => {
-    setExpanded(true);
+    openPlanner();
     setFocused(index);
     setActivePoint(index);
   };
@@ -262,7 +262,7 @@ export function RoutePanel({
             <Icon name="search" className="h-5 w-5" />
           </button>
           <button
-            onClick={() => setExpanded(true)}
+            onClick={openPlanner}
             className="ml-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-700 text-white"
             aria-label="Directions"
           >
@@ -296,20 +296,22 @@ export function RoutePanel({
             )}
           </LiquidCard>
         )}
-        <DraggableLiquidSheet
-          open={expanded}
-          onClose={() => setExpanded(false)}
-          ariaLabel="Route planner"
-          initialSnap="peek"
+        <BottomSheet
+          id="route-planner"
+          title={t("routes.title", "Choose your route")}
+          ariaLabelledBy="route-planner-title"
           className="route-planner-card mt-3 max-h-[calc(100dvh-92px)] overflow-auto rounded-[28px]"
-          drag={true}
-          dragListener={false}
-          sheetDragControls={dragControls}
-          dragConstraints={dragBoundsRef}
-          dragElastic={0.04}
-          dragMomentum={false}
-          onDragEnd={finishDrag}
-          style={{ x: windowSession.x, y: windowSession.y }}
+          draggableProps={{
+            initialSnap: "full",
+            drag: true,
+            dragListener: false,
+            sheetDragControls: dragControls,
+            dragConstraints: dragBoundsRef,
+            dragElastic: 0.04,
+            dragMomentum: false,
+            onDragEnd: finishDrag,
+            style: { x: windowSession.x, y: windowSession.y },
+          }}
         >
           {showDetails && routes[selectedRoute] ? (
             <DirectionsDetail
@@ -326,7 +328,19 @@ export function RoutePanel({
             />
           ) : (
             <>
-              <header className="route-planner-header flex items-center gap-3 px-5 pb-2 pt-4">
+              <header
+                className="route-planner-header flex items-center gap-3 px-5 pb-2 pt-4"
+                onPointerDown={(event) => {
+                  const target = event.target as HTMLElement;
+                  if (
+                    target.closest(
+                      'button, a, input, select, textarea, [role="button"], [contenteditable="true"]',
+                    )
+                  )
+                    return;
+                  dragControls.start(event);
+                }}
+              >
                 <div
                   className="route-planner-drag-handle"
                   role="button"
@@ -355,10 +369,12 @@ export function RoutePanel({
                   <p className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-700">
                     Directions
                   </p>
-                  <strong className="text-lg">Choose your route</strong>
+                  <strong id="route-planner-title" className="text-lg">
+                    Choose your route
+                  </strong>
                 </div>
                 <button
-                  onClick={() => setExpanded(false)}
+                  onClick={() => closeBottomSheet("route-planner")}
                   className="grid h-8 w-8 place-items-center rounded-full text-slate-500 hover:bg-slate-100"
                 >
                   <Icon name="close" className="h-5 w-5" />
@@ -550,7 +566,7 @@ export function RoutePanel({
               </div>
             </>
           )}
-        </DraggableLiquidSheet>
+        </BottomSheet>
       </section>
     </div>
   );

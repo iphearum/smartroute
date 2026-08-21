@@ -22,6 +22,8 @@ from app.services.assistant.protocol import (
     _pseudo_tool_call,
     _user_content,
     _visible_stream_text,
+    reasoning_mode,
+    resolve_reasoning,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,12 +58,28 @@ async def assistant_socket(websocket: WebSocket):
                 continue
 
             language = payload.get("language") if payload.get("language") in {"en", "km"} else "en"
-            thinking = payload.get("thinking") is True
+            mode = reasoning_mode(payload.get("reasoningMode"))
+            history = _stream_history(payload.get("messages"))
+            user_message = {
+                "role": "user",
+                "content": _user_content(text, payload.get("attachments")),
+            }
+            thinking = resolve_reasoning(mode, [*history, user_message])
             messages = [
                 {"role": "system", "content": system_prompt(language, thinking=thinking)},
-                *_stream_history(payload.get("messages")),
-                {"role": "user", "content": _user_content(text, payload.get("attachments"))},
+                *history,
+                user_message,
             ]
+            if thinking:
+                # Auto mode decides server-side, so the client is told when a
+                # turn will actually reason instead of guessing.
+                await websocket.send_json(
+                    {
+                        "type": "assistant.activity",
+                        "id": client_id,
+                        "data": {"kind": "thinking", "label": "Thinking…"},
+                    }
+                )
             try:
                 reply, action = await stream_turn(websocket, messages, client_id, thinking=thinking)
                 await websocket.send_json(
@@ -186,8 +204,13 @@ async def stream_assistant_chat(payload: dict[str, Any]):
     if not text:
         raise HTTPException(status_code=422, detail="text is required")
     language = payload.get("language") if payload.get("language") in {"en", "km"} else "en"
-    thinking = payload.get("thinking") is True
+    mode = reasoning_mode(payload.get("reasoningMode"))
     history = _stream_history(payload.get("messages"))
+    user_message = {
+        "role": "user",
+        "content": _user_content(text, payload.get("attachments")),
+    }
+    thinking = resolve_reasoning(mode, [*history, user_message])
     transport = register_stream(stream_id)
 
     async def generate():
@@ -196,7 +219,7 @@ async def stream_assistant_chat(payload: dict[str, Any]):
             messages = [
                 {"role": "system", "content": system_prompt(language, thinking=thinking)},
                 *history,
-                {"role": "user", "content": _user_content(text, payload.get("attachments"))},
+                user_message,
             ]
             task = asyncio.create_task(
                 stream_turn(transport, messages, stream_id, thinking=thinking)

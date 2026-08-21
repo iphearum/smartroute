@@ -6,25 +6,28 @@ const buildCpus = Number.isInteger(requestedBuildCpus)
   : 20;
 
 const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  
+  // Blocks cross-origin asset/endpoint tampering on your dev domains
   allowedDevOrigins: [
     "psarai.com",
     "*.psarai.com",
     "127.0.0.1",
     "192.168.10.105",
     "192.168.51.100",
-    "localhost",
-    "::1",
+    "localhost"
   ],
-  // Keep four of the host's 24 cores available for the OS and other services.
-  // Set NEXT_BUILD_CPUS=1 if a constrained build host needs a safe fallback.
+
   experimental: {
     cpus: buildCpus,
-    // Next defaults to process workers. Worker threads have intermittently
-    // crashed the webpack build worker with SIGSEGV on this host.
+    
+    // Note: These flags only apply if using the legacy Webpack pipeline (--webpack)
+    // Next 16 Turbopack build pipelines isolate execution natively in Rust
     workerThreads: false,
     webpackBuildWorker: true,
     webpackMemoryOptimizations: false,
   },
+
   outputFileTracingRoot: process.cwd(),
   poweredByHeader: false,
   productionBrowserSourceMaps: false,

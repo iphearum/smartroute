@@ -18,7 +18,10 @@ import { ShopPlatformPanel } from "@/features/shops/components/shop-platform-pan
 import { AiMapAssistant } from "@/features/assistant/components/ai-map-assistant";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { useRouteStore } from "@/features/routes/store/route-store";
-import { MapToolsMenu } from "./map-tools-menu";
+import {
+  ClearRouteBottomSheet,
+  MapToolsMenu,
+} from "./map-tools-menu";
 
 const railItems: { icon: IconName; label: AppNavSection; key: string }[] = [
   { icon: "home", label: "Explore", key: "map.explore" },
@@ -86,6 +89,7 @@ export function MapWorkspace() {
     language = useAppShell((state) => state.language),
     mapLayers = useAppShell((state) => state.mapLayers),
     openPlaceData = useAppShell((state) => state.openPlaceData),
+    openBottomSheet = useAppShell((state) => state.openBottomSheet),
     routes = useRouteStore((state) => state.routes),
     points = useRouteStore((state) => state.points);
   const [mapToolsOpen, setMapToolsOpen] = useState(false);
@@ -111,7 +115,7 @@ export function MapWorkspace() {
         assistantWidth={assistantWidth}
       />
       <nav
-        className={`desktop-rail map-primary-nav liquid-card liquid-dock absolute z-[1200] ${sidebarCollapsed ? "dock-hidden" : ""}`}
+        className={`desktop-rail map-primary-nav liquid-card liquid-dock absolute ${sidebarCollapsed ? "dock-hidden" : ""}`}
         aria-label={t("map.primaryNavigation", "Primary navigation")}
         aria-hidden={sidebarCollapsed}
       >
@@ -126,9 +130,10 @@ export function MapWorkspace() {
               );
             if (value === "Place data") openPlaceData();
             if (value === "Directions")
-              window.dispatchEvent(
-                new CustomEvent("smartroute:open-route-planner"),
-              );
+              openBottomSheet({
+                id: "route-planner",
+                title: t("routes.title", "Choose your route"),
+              });
             setMapToolsOpen(value === "Map tools");
           }}
           items={railItems.map((item) => ({
@@ -142,6 +147,10 @@ export function MapWorkspace() {
         <MapToolsMenu
           hasRoute={routes.length > 0}
           hasPoints={points.length > 0}
+          onClearRequested={() => {
+            setMapToolsOpen(false);
+            setActiveNav("Explore");
+          }}
           onAction={(tool) => {
             const events = {
               clear: "smartroute:clear-route-points",
@@ -154,6 +163,14 @@ export function MapWorkspace() {
           }}
         />
       )}
+      <ClearRouteBottomSheet
+        onConfirm={() => {
+          window.dispatchEvent(
+            new CustomEvent("smartroute:clear-route-points"),
+          );
+          setActiveNav("Explore");
+        }}
+      />
       <RoutePanel
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={toggleSidebar}

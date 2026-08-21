@@ -10,12 +10,14 @@ import {
   FiVolumeX,
 } from "react-icons/fi";
 import type { Place, TravelMode } from "@/features/routes/domain/types";
+import { useAppShell } from "@/shared/state/app-shell-context";
 import { Icon } from "@/shared/ui/icon";
+import { BottomSheet } from "@/shared/ui/bottom-sheet";
 import { useI18n } from "@/features/i18n/use-i18n";
 import { MarkdownMessage } from "./markdown-message";
 import { toSpeechText } from "../lib/speech-text";
 import { speakAssistantSpeech, stopAssistantSpeech } from "../lib/assistant-speech";
-import { AssistantActivity } from "./assistant-activity";
+import { AssistantActivityGroup } from "./assistant-activity-group";
 import type {
   AssistantAction,
   AssistantActivity as AssistantActivityState,
@@ -37,7 +39,7 @@ export function AssistantMessageThread({
   onDelete,
   onEdit,
   onBranch,
-  activity,
+  activities,
 }: {
   messages: ChatItem[];
   threadRef: RefObject<HTMLDivElement | null>;
@@ -50,9 +52,27 @@ export function AssistantMessageThread({
   onDelete: (messageId: string) => void;
   onEdit: (messageId: string) => void;
   onBranch: (messageId: string) => void;
-  activity: AssistantActivityState | null;
+  activities: AssistantActivityState[];
 }) {
   const t = useI18n();
+  const approvalTitle = t(
+    "assistant.approvalTitle",
+    "The assistant wants to change the map.",
+  );
+  const openBottomSheet = useAppShell((state) => state.openBottomSheet),
+    closeBottomSheet = useAppShell((state) => state.closeBottomSheet);
+
+  useEffect(() => {
+    if (pendingToolCall) {
+      openBottomSheet({
+        id: "assistant-tool-approval",
+        title: approvalTitle,
+      });
+    } else {
+      closeBottomSheet("assistant-tool-approval");
+    }
+  }, [approvalTitle, closeBottomSheet, openBottomSheet, pendingToolCall]);
+
   return (
     <div
       ref={threadRef}
@@ -62,12 +82,11 @@ export function AssistantMessageThread({
       {messages.length > 0 && <div></div>}
       {messages.map((message, index) => (
         <Fragment key={message.id || index}>
-          {activity &&
-            message.streaming &&
+          {message.streaming &&
             index === messages.findIndex((item) => item.streaming) && (
-              <AssistantActivity
-                activity={activity}
-                summary={message.reasoning}
+              <AssistantActivityGroup
+                activities={activities}
+                reasoning={message.reasoning}
               />
             )}
           <AssistantMessage
@@ -82,27 +101,36 @@ export function AssistantMessageThread({
           />
         </Fragment>
       ))}
-      {activity && !messages.some((message) => message.streaming) && (
-        <AssistantActivity activity={activity} />
+      {!messages.some((message) => message.streaming) && (
+        <AssistantActivityGroup activities={activities} />
       )}
-      {pendingToolCall && (
-        <div
-          className="assistant-tool-approval"
-          role="alertdialog"
-          aria-label="Approve assistant map action"
-        >
-          <strong>Allow {pendingToolCall.name.replaceAll("_", " ")}?</strong>
-          <span>The assistant wants to change the map.</span>
-          <div className="assistant-tool-approval-actions">
-            <button type="button" onClick={onRejectTool}>
-              Decline
-            </button>
-            <button type="button" onClick={onApproveTool}>
-              Allow
-            </button>
-          </div>
-        </div>
-      )}
+      <BottomSheet
+        id="assistant-tool-approval"
+        title={approvalTitle}
+        role="alertdialog"
+        ariaLabelledBy="assistant-tool-approval-title"
+        ariaDescribedBy="assistant-tool-approval-description"
+        className="assistant-tool-approval"
+      >
+        {pendingToolCall && (
+          <section className="assistant-tool-approval-content">
+            <strong id="assistant-tool-approval-title">
+              Allow {pendingToolCall.name.replaceAll("_", " ")}?
+            </strong>
+            <span id="assistant-tool-approval-description">
+              {approvalTitle}
+            </span>
+            <div className="assistant-tool-approval-actions">
+              <button type="button" onClick={onRejectTool}>
+                {t("assistant.decline", "Decline")}
+              </button>
+              <button type="button" onClick={onApproveTool}>
+                {t("assistant.approve", "Allow")}
+              </button>
+            </div>
+          </section>
+        )}
+      </BottomSheet>
     </div>
   );
 }
@@ -133,18 +161,12 @@ function AssistantMessage({
     <div
       className={`assistant-message grid max-w-[92%] gap-2 text-xs ${message.role === "user" ? "ml-auto" : ""}`}
     >
-      {message.role === "assistant" &&
-        message.activities?.map((messageActivity, index) => (
-          <AssistantActivity
-            key={`${message.id ?? "assistant"}-activity-${index}`}
-            activity={messageActivity}
-            summary={
-              messageActivity.kind === "thinking"
-                ? message.reasoning
-                : undefined
-            }
-          />
-        ))}
+      {message.role === "assistant" && message.activities?.length ? (
+        <AssistantActivityGroup
+          activities={message.activities}
+          reasoning={message.reasoning}
+        />
+      ) : null}
       <div
         className={`assistant-message-bubble ${message.role === "user" ? "is-user" : "is-assistant"}`}
       >

@@ -26,6 +26,10 @@ export type MapLayerKey =
   | "places"
   | "routes";
 export type MapLayerVisibility = Record<MapLayerKey, boolean>;
+export type BottomSheetDescriptor = {
+  id: string;
+  title: string;
+};
 
 export const defaultMapLayers: MapLayerVisibility = {
   roads: true,
@@ -48,6 +52,7 @@ export interface AppShellState {
   language: MapLanguage;
   placeDataOpen: boolean;
   mapLayers: MapLayerVisibility;
+  bottomSheet: BottomSheetDescriptor | null;
   toggleSidebar: () => void;
   setActiveNav: (section: AppNavSection) => void;
   togglePoiFilter: (key: string) => void;
@@ -57,6 +62,8 @@ export interface AppShellState {
   hydrateLanguage: () => void;
   openPlaceData: () => void;
   closePlaceData: () => void;
+  openBottomSheet: (sheet: BottomSheetDescriptor) => void;
+  closeBottomSheet: (id?: string) => void;
 }
 
 function createAppShellStore() {
@@ -67,6 +74,7 @@ function createAppShellStore() {
     language: "en",
     placeDataOpen: false,
     mapLayers: defaultMapLayers,
+    bottomSheet: null,
     toggleSidebar: () =>
       set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
     setActiveNav: (activeNav) => set({ activeNav }),
@@ -134,6 +142,11 @@ function createAppShellStore() {
     },
     openPlaceData: () => set({ placeDataOpen: true }),
     closePlaceData: () => set({ placeDataOpen: false }),
+    openBottomSheet: (bottomSheet) => set({ bottomSheet }),
+    closeBottomSheet: (id) =>
+      set((state) =>
+        !id || state.bottomSheet?.id === id ? { bottomSheet: null } : state,
+      ),
   }));
 }
 

@@ -13,7 +13,9 @@ stays open. The assistant opens as a docked right-side desktop panel; its
 collapsed tab keeps the map unobstructed, and the map viewport reserves the
 aside width while it is open. On mobile, the same shared shell becomes a
 bottom-anchored, near-full-height panel with no resize affordance, leaving a
-small map area above it for context. The aside can be resized from 300 to 640
+small map area above it for context. The mobile navigation remains behind the
+open assistant surface so it cannot overlap the chat composer. The aside can be
+resized from 300 to 640
 pixels with its left edge or keyboard arrow keys on desktop. Assistant messages
 render safe Markdown,
 including formatted text, headings, lists, links, images, inline code, and
@@ -58,7 +60,9 @@ browser capability request, and the browser asks for permission before sending
 coordinates back as tool-result context.
 
 Tool permissions are client-owned. `Ask for approval` pauses map-changing tool
-calls until the user allows or declines them; `Run automatically` executes
+calls until the user allows or declines them; the approval alert uses the shared
+`BottomSheet`/`DraggableLiquidSheet` surface with the global
+`assistant-tool-approval` sheet id. `Run automatically` executes
 available tools without an in-chat approval; `Full access` enables all exposed
 tools; `Disabled` returns a rejected tool result without changing the map.
 Search remains non-mutating and can run without a confirmation prompt.
@@ -152,9 +156,12 @@ reloads. The composer action row remains pinned at the bottom and does not
 duplicate the activity history. If no explicit summary is returned, the UI
 falls back to the generic Thinking status.
 
-The composer uses a compact liquid-glass command surface with an interactive
+The composer uses a compact liquid-glass command surface built from the shared
+liquid surface, sheen, border, shadow, and backdrop tokens, with an interactive
 tool-call approval selector and a list-style plus menu for attachments,
-Search, and available tools. Search and Code capability indicators, model,
+Search, and available tools. The plus menu, permission selector, and Thinking
+mode selector use the same nested liquid-glass popover treatment. Search and
+Code capability indicators, model,
 and map-context indicators remain visible in the bottom toolbar. Attachments
 render as light thumbnail/file tiles inside the composer. It accepts up to five
 local attachments, each capped at 5 MB. Images
@@ -167,6 +174,10 @@ treated as ordinary text.
 Unsupported files remain visible as attachment metadata but are not falsely
 treated as parsed content. Browser attachments are not persisted in chat
 history.
+
+After a valid send, the composer restores focus to its message textarea when
+the request returns to idle, so keyboard users can continue typing without
+selecting the field again.
 
 Completed assistant responses expose local actions for copy, retry, delete,
 and read-aloud. Read-aloud is a toggle: clicking it again cancels the active
@@ -283,10 +294,12 @@ AI_TIMEOUT=120
 The API key stays server-side. Tool names and arguments reach the browser only
 as a typed envelope because the browser owns MapLibre and the route store;
 arbitrary JavaScript is never sent or evaluated. Configure
-`NEXT_PUBLIC_AI_SOCKET_URL` when the backend socket is not at the default
-development URL (`ws://127.0.0.1:8100/ws/assistant`). Configure `FASTAPI_URL`
-separately for HTTP APIs. Because `.env.local` overrides `.env`, keep these
-variables in `.env.local` when using a local override.
+`NEXT_PUBLIC_AI_SOCKET_URL` only when the socket is not served by the same
+public host as the frontend; otherwise the client derives `/ws/assistant` from
+the current page origin (`ws:` locally or `wss:` over HTTPS). `FASTAPI_URL`
+remains the server-side HTTP origin used by the backend proxy. Because
+`.env.local` overrides `.env`, keep the socket override there for local
+development when FastAPI runs on `127.0.0.1:8100`.
 
 ## Failure behavior and future work
 

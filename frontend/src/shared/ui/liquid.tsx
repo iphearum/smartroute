@@ -133,7 +133,11 @@ export function DraggableLiquidSheet({
   onClose,
   children,
   className,
+  overlayClassName,
   ariaLabel = "Details",
+  role = "dialog",
+  ariaLabelledBy,
+  ariaDescribedBy,
   initialSnap = "half",
   drag,
   dragListener,
@@ -148,7 +152,11 @@ export function DraggableLiquidSheet({
   onClose: () => void;
   children: ReactNode;
   className?: string;
+  overlayClassName?: string;
   ariaLabel?: string;
+  role?: "dialog" | "alertdialog";
+  ariaLabelledBy?: string;
+  ariaDescribedBy?: string;
   initialSnap?: SheetSnap;
   drag?: boolean | "x" | "y";
   dragListener?: boolean;
@@ -222,7 +230,7 @@ export function DraggableLiquidSheet({
         <>
           <motion.button
             type="button"
-            className="draggable-liquid-overlay"
+            className={join("draggable-liquid-overlay", overlayClassName)}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -263,9 +271,11 @@ export function DraggableLiquidSheet({
             // must not leak into the fixed mobile sheet, where they can move a
             // previously dragged desktop panel below the usable viewport.
             style={mobile ? undefined : style}
-            role="dialog"
+            role={role}
             aria-modal="true"
             aria-label={ariaLabel}
+            aria-labelledby={ariaLabelledBy}
+            aria-describedby={ariaDescribedBy}
           >
             <div
               className="draggable-liquid-handle"

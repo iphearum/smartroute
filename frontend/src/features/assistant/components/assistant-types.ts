@@ -31,6 +31,8 @@ export type ChatSession = {
 };
 
 export type PermissionMode = "ask" | "automatic" | "full" | "disabled";
+// "auto" lets the backend decide per request; "high" always reasons.
+export type ReasoningMode = "off" | "auto" | "high";
 export const permissionOptions: Array<{
   id: PermissionMode;
   title: string;
@@ -71,4 +73,6 @@ export type AssistantActivity = {
   detail?: string;
   startedAt: number;
   active?: boolean;
+  toolCallId?: string;
+  status?: "done" | "error";
 };

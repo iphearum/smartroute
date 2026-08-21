@@ -60,24 +60,6 @@ module.exports = {
       },
     },
     {
-      name: "smart-nbc-rates",
-      cwd: path.join(root, "backend"),
-      script: path.join(root, "backend", ".venv", "bin", "python"),
-      args: "-m scripts.fetch_nbc_exchange_rates",
-      interpreter: "none",
-      // Runs once immediately on `pm2 start`, then again every day at 01:00
-      // Phnom Penh time via cron_restart. autorestart stays off so a normal
-      // exit (success or failure) doesn't get retried before the next cron tick.
-      autorestart: false,
-      cron_restart: "0 1 * * *",
-      kill_timeout: 15000,
-      time: true,
-      env: {
-        TZ: "Asia/Phnom_Penh",
-        PYTHONUNBUFFERED: "1",
-      },
-    },
-    {
       name: "smart-frontend",
       cwd: path.join(root, "frontend"),
       script: path.join(

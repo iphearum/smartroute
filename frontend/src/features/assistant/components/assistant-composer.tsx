@@ -1,6 +1,8 @@
+import { useEffect, useRef } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import {
   FiArrowUp,
+  FiCheck,
   FiCloudLightning,
   FiCode,
   FiCpu,
@@ -17,6 +19,7 @@ import { AssistantToolMenu } from "./assistant-tool-menu";
 import {
   permissionOptions,
   type ChatAttachment,
+  type ReasoningMode,
   type PermissionMode,
 } from "./assistant-types";
 import { BsLightbulb } from "react-icons/bs";
@@ -35,8 +38,10 @@ export function AssistantComposer({
   setPermissionMenuOpen,
   permissionMode,
   setPermissionMode,
-  thinkingEnabled,
-  setThinkingEnabled,
+  reasoningMode,
+  setReasoningMode,
+  thinkingMenuOpen,
+  setThinkingMenuOpen,
   audioResponseEnabled,
   setAudioResponseEnabled,
   fileInputRef,
@@ -58,8 +63,10 @@ export function AssistantComposer({
   setPermissionMenuOpen: Dispatch<SetStateAction<boolean>>;
   permissionMode: PermissionMode;
   setPermissionMode: (value: PermissionMode) => void;
-  thinkingEnabled: boolean;
-  setThinkingEnabled: (enabled: boolean) => void;
+  reasoningMode: ReasoningMode;
+  setReasoningMode: (mode: ReasoningMode) => void;
+  thinkingMenuOpen: boolean;
+  setThinkingMenuOpen: Dispatch<SetStateAction<boolean>>;
   audioResponseEnabled: boolean;
   setAudioResponseEnabled: (enabled: boolean) => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -70,8 +77,23 @@ export function AssistantComposer({
   onMapSearch: () => void;
 }) {
   const t = useI18n();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const focusAfterSendRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusAfterSendRef.current || busy) return;
+    focusAfterSendRef.current = false;
+    inputRef.current?.focus();
+  }, [busy, input]);
+
+  const handleSend = () => {
+    if (!connected || busy || (!input.trim() && !attachments.length)) return;
+    focusAfterSendRef.current = true;
+    onSend();
+  };
+
   return (
-    <div className="assistant-composer border-t border-white/10 bg-transparent p-3">
+    <div className="assistant-composer bg-transparent p-3">
       {composerMenuOpen && (
         <AssistantToolMenu
           onAddFiles={() => {
@@ -119,11 +141,65 @@ export function AssistantComposer({
             }}
           />
         )}
+        {thinkingMenuOpen && (
+          <div
+            className="assistant-thinking-menu"
+            role="menu"
+            aria-label={t("assistant.thinkingMode", "Thinking mode")}
+          >
+            <div className="assistant-thinking-menu-header">
+              {t("assistant.thinkingMode", "Thinking mode")}
+            </div>
+            {(["auto", "high", "off"] as ReasoningMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={
+                  "assistant-thinking-option" +
+                  (reasoningMode === mode ? " selected" : "")
+                }
+                role="menuitemradio"
+                aria-checked={reasoningMode === mode}
+                onClick={() => {
+                  setReasoningMode(mode);
+                  setThinkingMenuOpen(false);
+                }}
+              >
+                <span className="assistant-thinking-option-copy">
+                  <strong>{reasoningModeLabel(mode, t)}</strong>
+                  <span>
+                    {mode === "auto"
+                      ? t(
+                          "assistant.reasoningAutoDescription",
+                          "Balanced reasoning for most requests",
+                        )
+                      : mode === "high"
+                        ? t(
+                            "assistant.reasoningHighDescription",
+                            "Deeper reasoning for complex tasks",
+                          )
+                        : t(
+                            "assistant.reasoningOffDescription",
+                            "Respond without extra reasoning",
+                          )}
+                  </span>
+                </span>
+                {reasoningMode === mode && (
+                  <FiCheck
+                    className="assistant-thinking-option-check"
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
         <AttachmentPreview
           attachments={attachments}
           setAttachments={setAttachments}
         />
         <textarea
+          ref={inputRef}
           value={input}
           onChange={(event) => onInputChange(event.target.value)}
           onPaste={(event) => {
@@ -138,7 +214,7 @@ export function AssistantComposer({
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              onSend();
+              handleSend();
             }
           }}
           placeholder={
@@ -198,26 +274,26 @@ export function AssistantComposer({
             type="button"
             className={[
               "assistant-composer-thinking",
-              thinkingEnabled ? "is-enabled" : "",
+              reasoningMode !== "off" ? "is-enabled" : "",
+              reasoningMode === "high" ? "is-high" : "",
               busy ? "is-busy" : "",
             ].join(" ")}
-            onClick={() => setThinkingEnabled(!thinkingEnabled)}
-            aria-pressed={thinkingEnabled}
-            aria-label={t(
-              "assistant.thinkingModeDescription",
-              "Use more reasoning for complex requests",
-            )}
+            onClick={() => setThinkingMenuOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={thinkingMenuOpen}
+            aria-label={`${t(
+              "assistant.reasoningModeDescription",
+              "Reasoning: off, automatic, or always on",
+            )} — ${reasoningModeLabel(reasoningMode, t)}`}
             title={t(
-              "assistant.thinkingModeDescription",
-              "Use more reasoning for complex requests",
+              "assistant.reasoningModeDescription",
+              "Reasoning: off, automatic, or always on",
             )}
           >
             <BsLightbulb aria-hidden="true" />
-            {busy
+            {busy && reasoningMode !== "off"
               ? t("assistant.thinking", "Thinking…")
-              : thinkingEnabled
-                ? t("assistant.thinkingEnabled", "Thinking")
-                : t("assistant.thinkingMode", "Thinking")}
+              : reasoningModeLabel(reasoningMode, t)}
           </button>
           <button
             type="button"
@@ -252,7 +328,7 @@ export function AssistantComposer({
           <button
             type="button"
             className="assistant-composer-send"
-            onClick={onSend}
+            onClick={handleSend}
             disabled={
               !connected || busy || (!input.trim() && !attachments.length)
             }
@@ -312,4 +388,20 @@ function AttachmentPreview({
       ))}
     </div>
   );
+}
+
+const REASONING_ORDER: ReasoningMode[] = ["auto", "high", "off"];
+
+function nextReasoningMode(mode: ReasoningMode): ReasoningMode {
+  const index = REASONING_ORDER.indexOf(mode);
+  return REASONING_ORDER[(index + 1) % REASONING_ORDER.length];
+}
+
+function reasoningModeLabel(
+  mode: ReasoningMode,
+  t: (key: string, fallback?: string) => string,
+): string {
+  if (mode === "off") return t("assistant.reasoningOff", "No thinking");
+  if (mode === "high") return t("assistant.reasoningHigh", "Always thinking");
+  return t("assistant.reasoningAuto", "Auto thinking");
 }

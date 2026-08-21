@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import queue
 import threading
 from typing import Any
@@ -13,6 +14,7 @@ from openai import OpenAI
 
 from app.services.assistant.tools import TOOLS
 from app.services.assistant.protocol import (
+    ReasoningRedactor,
     ThinkingParser,
     _pseudo_tool_call,
     _visible_stream_text,
@@ -20,6 +22,8 @@ from app.services.assistant.protocol import (
     has_pseudo_tool_start,
 )
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 SYSTEM = """You are PsarAI's map copilot. Be concise and helpful. Use search_places for places on the Smart map. Use search_web for current facts, news, policies, statistics, or information the user asks you to verify on the internet. Use plot_route only when coordinates are known; never invent coordinates. After a tool result, explain the result in one short sentence. Do not expose tool names or JSON to the user."""
 LANGUAGE_INSTRUCTIONS = {
@@ -42,7 +46,7 @@ def system_prompt(language: str = "en", thinking: bool = False) -> str:
     return f"{SYSTEM} {LANGUAGE_INSTRUCTIONS[selected]} {instruction}".strip()
 STREAM_CHUNK_CHARS = 4
 STREAM_CHUNK_DELAY = 0.018
-MAX_REASONING_SUMMARY_CHARS = 1600
+MAX_REASONING_SUMMARY_CHARS = 8000
 TOOL_ACTIVITY_LABELS = {
     "search_places": "Searching places",
     "search_web": "Searching the web",
@@ -64,19 +68,73 @@ client = (
 )
 
 
-def _stream_in_thread(messages: list[dict[str, Any]], output: queue.Queue) -> None:
+def _delta_reasoning(delta: Any) -> str:
+    """Read the provider-native reasoning channel from a streamed delta.
+
+    OpenAI-compatible local servers (llama.cpp, vLLM, Ollama) put separated
+    chain-of-thought in ``reasoning_content`` (or ``reasoning``) instead of
+    inline ``<think>`` tags, so both spellings are accepted.
+    """
+    try:
+        payload = delta.model_dump()
+    except AttributeError:
+        payload = getattr(delta, "__dict__", {}) or {}
+    for key in ("reasoning_content", "reasoning"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _rejects_thinking_flag(error: Exception) -> bool:
+    """Detect a provider that does not understand the enable_thinking flag."""
+    if getattr(error, "status_code", None) not in {400, 422}:
+        return False
+    detail = str(error).lower()
+    return "enable_thinking" in detail or any(
+        phrase in detail
+        for phrase in ("unknown field", "unexpected", "extra fields", "not permitted")
+    )
+
+
+def _open_stream(messages: list[dict[str, Any]], enable_thinking: bool):
+    """Start the completion stream, asking the model to think or not think.
+
+    Support for the flag varies between OpenAI-compatible servers, so a
+    provider that rejects it falls back to an unflagged request rather than
+    failing the whole turn.
+    """
+    request: dict[str, Any] = {
+        "model": settings.ai_model,
+        "messages": messages,
+        "temperature": 0.2,
+        "tools": TOOLS,
+        "tool_choice": "auto",
+        "stream": True,
+    }
+    try:
+        return client.chat.completions.create(
+            **request, extra_body={"enable_thinking": enable_thinking}
+        )
+    except Exception as exc:
+        if not _rejects_thinking_flag(exc):
+            raise
+        logger.warning(
+            "Provider rejected enable_thinking; retrying without it: %s", exc
+        )
+        return client.chat.completions.create(**request)
+
+
+def _stream_in_thread(
+    messages: list[dict[str, Any]],
+    output: queue.Queue,
+    enable_thinking: bool = False,
+) -> None:
     try:
         if client is None:
             output.put(("error", "AI assistant is not configured yet."))
             return
-        stream = client.chat.completions.create(
-            model=settings.ai_model,
-            messages=messages,
-            temperature=0.2,
-            tools=TOOLS,
-            tool_choice="auto",
-            stream=True,
-        )
+        stream = _open_stream(messages, enable_thinking)
         for chunk in stream:
             usage = getattr(chunk, "usage", None)
             if usage:
@@ -91,12 +149,48 @@ def _stream_in_thread(messages: list[dict[str, Any]], output: queue.Queue) -> No
                     delta.content or "",
                     [call.model_dump() for call in (delta.tool_calls or [])],
                     choice.finish_reason,
+                    _delta_reasoning(delta),
                 )
             )
     except Exception as exc:
         output.put(("error", str(exc)))
     finally:
         output.put(("end", None))
+
+
+def _tool_activity_detail(name: str, args: dict[str, Any]) -> str | None:
+    """Label one tool step with its subject so repeats stay distinguishable."""
+    if name in {"search_places", "search_web"} and isinstance(args.get("query"), str):
+        return f'"{args["query"][:200]}"'
+    if name == "add_map_point":
+        for key in ("name", "label", "address"):
+            value = args.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[:120]
+        return _coordinate_detail(args)
+    if name == "focus_coordinate":
+        return _coordinate_detail(args)
+    if name == "plot_route":
+        stops = args.get("stops") or args.get("points")
+        if isinstance(stops, list) and stops:
+            names = [
+                str(stop.get("name") or stop.get("label") or "").strip()
+                for stop in stops
+                if isinstance(stop, dict)
+            ]
+            names = [name for name in names if name]
+            if names:
+                return " → ".join(names)[:200]
+            return f"{len(stops)} stops"
+    return None
+
+
+def _coordinate_detail(args: dict[str, Any]) -> str | None:
+    latitude = args.get("latitude", args.get("lat"))
+    longitude = args.get("longitude", args.get("lng"))
+    if isinstance(latitude, (int, float)) and isinstance(longitude, (int, float)):
+        return f"{latitude:.4f}, {longitude:.4f}"
+    return None
 
 
 async def _receive_tool_result(websocket: WebSocket, call_id: str) -> dict[str, Any]:
@@ -115,20 +209,46 @@ async def stream_turn(
     message_id: str,
     thinking: bool = False,
 ) -> tuple[str, dict | None]:
-    """Stream one model turn and recursively handle follow-up tool rounds."""
+    """Stream one model turn and recursively handle follow-up tool rounds.
+
+    ``thinking`` is the resolved decision for this turn: it both asks the model
+    to reason and allows that reasoning through to the client.
+    """
     output: queue.Queue = queue.Queue()
-    threading.Thread(target=_stream_in_thread, args=(messages, output), daemon=True).start()
+    threading.Thread(
+        target=_stream_in_thread, args=(messages, output, thinking), daemon=True
+    ).start()
     text = ""
     visible_text = ""
     pending_text = ""
     calls: dict[int, dict[str, str]] = {}
     thinking_parser = ThinkingParser()
+    reasoning_redactor = ReasoningRedactor()
     reasoning_chars = 0
 
     async def emit_reasoning(piece: str) -> None:
-        nonlocal reasoning_chars
-        if not thinking or not piece.strip() or reasoning_chars >= MAX_REASONING_SUMMARY_CHARS:
+        """Release reasoning only once it has been sanitized sentence by sentence."""
+        if not thinking or not piece:
             return
+        for sentence in reasoning_redactor.feed(piece):
+            await send_reasoning(sentence)
+
+    async def flush_reasoning() -> None:
+        if not thinking:
+            return
+        for sentence in reasoning_redactor.finish():
+            await send_reasoning(sentence)
+
+    async def send_reasoning(piece: str) -> None:
+        nonlocal reasoning_chars
+        if reasoning_chars >= MAX_REASONING_SUMMARY_CHARS:
+            return
+        # Leading whitespace would render as a blank first line; inner
+        # whitespace must survive so streamed words stay separated.
+        if not reasoning_chars:
+            piece = piece.lstrip()
+            if not piece:
+                return
         remaining = MAX_REASONING_SUMMARY_CHARS - reasoning_chars
         summary_piece = piece[:remaining]
         reasoning_chars += len(summary_piece)
@@ -172,7 +292,9 @@ async def stream_turn(
         if kind == "usage":
             await websocket.send_json({"type": "assistant.usage", "data": item[1]})
             continue
-        _, delta, tool_deltas, _finish = item
+        _, delta, tool_deltas, _finish, reasoning_delta = item
+        if reasoning_delta:
+            await emit_reasoning(reasoning_delta)
         for event_type, piece in thinking_parser.feed(delta or ""):
             if event_type == "reasoning":
                 await emit_reasoning(piece)
@@ -191,6 +313,7 @@ async def stream_turn(
             await emit_reasoning(piece)
         else:
             await emit_answer(piece)
+    await flush_reasoning()
 
     action = None
     pseudo_call = _pseudo_tool_call(text, message_id) if not calls else None
@@ -217,9 +340,6 @@ async def stream_turn(
         except json.JSONDecodeError:
             args = {}
         label = TOOL_ACTIVITY_LABELS.get(call["name"], "Using map tool")
-        detail = None
-        if call["name"] in {"search_places", "search_web"} and isinstance(args.get("query"), str):
-            detail = f'"{args["query"][:200]}"'
         await websocket.send_json(
             {
                 "type": "assistant.activity",
@@ -227,7 +347,8 @@ async def stream_turn(
                 "data": {
                     "kind": "tool",
                     "label": label,
-                    "detail": detail,
+                    "detail": _tool_activity_detail(call["name"], args),
+                    "toolCallId": call["id"],
                 },
             }
         )
@@ -241,6 +362,18 @@ async def stream_turn(
         result = await _receive_tool_result(websocket, call["id"])
         if isinstance(result.get("action"), dict):
             action = result["action"]
+        await websocket.send_json(
+            {
+                "type": "assistant.activity",
+                "id": message_id,
+                "data": {
+                    "kind": "tool",
+                    "label": label,
+                    "toolCallId": call["id"],
+                    "status": "error" if result.get("error") else "done",
+                },
+            }
+        )
         messages.append(
             {
                 "role": "tool",
@@ -248,16 +381,6 @@ async def stream_turn(
                 "content": json.dumps(jsonable_encoder(result), default=str),
             }
         )
-    await websocket.send_json(
-        {
-            "type": "assistant.activity",
-            "id": message_id,
-            "data": {
-                "kind": "tool",
-                "label": "Updating the map…",
-            },
-        }
-    )
     follow_up, follow_action = await stream_turn(
         websocket, messages, message_id, thinking=thinking
     )

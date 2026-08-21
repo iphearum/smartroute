@@ -99,17 +99,24 @@ Two further details follow from the rule:
 
 The route planner is the documented exception: its sheet still moves with
 framer-motion motion values, so its stored `x`/`y` are translate offsets rather
-than viewport coordinates. It is not resizable, and its `expanded` state is not
-restored because the sheet's content depends on the in-memory route store.
+than viewport coordinates. It is not resizable, and its open state is held by
+the shared bottom-sheet descriptor (`id: "route-planner"`, plus its base title)
+rather than restored because the sheet's content depends on the in-memory route
+store.
+The route planner header is the primary drag surface on touch screens; its
+close button and any interactive fields remain click targets.
 
 On mobile, the route planner is a bottom sheet rather than a desktop window.
-It opens at a peek snap for map context, moves through a half-open editing snap,
-and reaches a full directions snap. The drag handle, keyboard arrows, and
+It opens at the full content snap with the map still visible above it, can move
+through half-open editing and peek snaps for more map context. The drag handle,
+keyboard arrows, and
 Enter/Space cycle these states; a sufficiently fast or deep downward swipe
 dismisses the sheet. The route header remains sticky while the card scrolls.
 Persisted desktop `x`/`y` offsets are ignored while the sheet is mobile so a
 desktop drag cannot push the mobile directions panel off-screen. The sheet
-reserves the device bottom safe area and keeps scrolling inside the glass card.
+reserves the device bottom safe area, keeps scrolling inside the glass card, and
+uses the shared mobile overlay/sheet layer (`1300`/`1310`) above map controls,
+attribution, and bottom navigation.
 
 The other map windows follow the same mobile separation of roles. Place details
 use a bottom-anchored sheet with a scrollable body; desktop resize, move, and

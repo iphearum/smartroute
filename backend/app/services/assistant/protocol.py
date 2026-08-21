@@ -26,11 +26,12 @@ PSEUDO_TOOL_NAMES = {
 
 
 class ThinkingParser:
-    """Split an explicit, short thinking summary from streamed answer text.
+    """Split a thinking summary from streamed answer text.
 
-    The model is instructed to use this channel for a concise summary only;
-    provider-native private reasoning fields are never forwarded by the stream
-    adapter.
+    Models that lack a provider-native reasoning channel are instructed to
+    wrap a short planning summary in ``<think>`` tags. The tags are always
+    stripped from the answer, whether or not thinking mode is on, so protocol
+    markup never reaches the chat bubble.
     """
 
     OPEN = "<think>"
@@ -79,6 +80,167 @@ class ThinkingParser:
         remaining = self.pending
         self.pending = ""
         return [(event_type, remaining)]
+
+
+INTERNAL_TOOL_LABELS = {
+    "search_places": "place search",
+    "search_web": "web search",
+    "plot_route": "route planning",
+    "add_map_point": "map pins",
+    "focus_coordinate": "map focus",
+    "reset_map_view": "map reset",
+    "clear_route_points": "route clearing",
+    "get_current_location": "location lookup",
+}
+TOOL_TOKEN_PATTERN = re.compile(
+    r"\b(" + "|".join(INTERNAL_TOOL_LABELS) + r")\b(?:\s*\(\s*\))?",
+    re.IGNORECASE,
+)
+INTERNAL_PHRASE_PATTERN = re.compile(
+    r"system (?:prompt|message|instruction)"
+    r"|developer (?:prompt|message|instruction)"
+    r"|tool[ _](?:call|schema|definition|name)"
+    r"|function[ _](?:call|schema|signature)"
+    r"|json (?:schema|payload|argument|blob)"
+    r"|tool_choice|</?think>|</?tool|chain[- ]of[- ]thought"
+    r"|my (?:instructions|guidelines) (?:say|state)"
+    # Plumbing talk about tools in general. Deliberately narrow: it must read
+    # as tool *usage*, so a genuine query like "tool rental shop" survives.
+    r"|\btools?\s+(?:use|usage|call|invocation|needed|required|available|access)\b"
+    r"|\b(?:use|using|invoke|invoking|call|calling|need|needs|require|requires)"
+    r"\s+(?:a|an|the|any|some|no)?\s*tools?\b"
+    r"|\bno\s+tools?\b",
+    re.IGNORECASE,
+)
+# A sentence closes on terminal punctuation that is followed by whitespace, or
+# on a newline. A trailing "." with nothing after it stays buffered because the
+# next streamed token may continue it (e.g. an abbreviation or a decimal).
+SENTENCE_END_PATTERN = re.compile(r".*?(?:[.!?]+(?=\s)|\n)", re.DOTALL)
+
+
+def _redact_reasoning_sentence(sentence: str) -> str:
+    """Strip internal plumbing from one sentence of model reasoning.
+
+    Reasoning is shown to end users, so it must not name tools, quote the
+    system prompt, or expose the tool-call protocol. A sentence that merely
+    mentions one capability is rewritten in plain language; one that
+    enumerates several is dropped, since it is describing the toolbox rather
+    than the request.
+    """
+    if not sentence.strip():
+        return ""
+    if len(TOOL_TOKEN_PATTERN.findall(sentence)) >= 2:
+        return ""
+    cleaned = TOOL_TOKEN_PATTERN.sub(
+        lambda match: INTERNAL_TOOL_LABELS[match.group(1).lower()], sentence
+    )
+    if INTERNAL_PHRASE_PATTERN.search(cleaned):
+        return ""
+    return cleaned
+
+
+REASONING_MODES = ("off", "auto", "high")
+# Requests whose wording implies multi-step work. Kept deliberately small: a
+# false positive only costs latency, while a false negative costs answer
+# quality on exactly the requests that need care.
+REASONING_KEYWORDS = (
+    "debug",
+    "analyz",
+    "compare",
+    "why",
+    "plan",
+    "step by step",
+    "step-by-step",
+    "architect",
+    "optimi",
+    "reason",
+    "explain",
+    "troubleshoot",
+    "fastest",
+    "cheapest",
+    "best route",
+    "trade-off",
+    "tradeoff",
+    "pros and cons",
+)
+
+
+def reasoning_mode(value: Any) -> str:
+    """Normalize the client's requested reasoning mode, defaulting to auto."""
+    candidate = str(value or "").strip().lower()
+    return candidate if candidate in REASONING_MODES else "auto"
+
+
+def _message_text(message: Any) -> str:
+    """Read the text of a message whose content may be multimodal parts."""
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            str(part.get("text", ""))
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return ""
+
+
+def should_reason(messages: list[dict[str, Any]]) -> bool:
+    """Decide whether the latest user turn is worth spending reasoning on."""
+    latest = next(
+        (message for message in reversed(messages) if message.get("role") == "user"),
+        None,
+    )
+    text = _message_text(latest).lower()
+    if not text:
+        return False
+    if any(keyword in text for keyword in REASONING_KEYWORDS):
+        return True
+    # Long or multi-part requests tend to need planning even without a keyword.
+    return len(text) > 240 or text.count("?") > 1
+
+
+def resolve_reasoning(mode: str, messages: list[dict[str, Any]]) -> bool:
+    """Map a reasoning mode plus the current turn onto a thinking decision."""
+    if mode == "off":
+        return False
+    if mode == "high":
+        return True
+    return should_reason(messages)
+
+
+class ReasoningRedactor:
+    """Buffer streamed reasoning into sentences so it can be sanitized.
+
+    Redaction cannot run token by token: "search" and "_places" arrive as
+    separate deltas, and a rule that only sees one of them cannot tell what it
+    is looking at. Text is therefore held until a sentence completes, checked
+    as a whole, then released.
+    """
+
+    def __init__(self) -> None:
+        self.pending = ""
+
+    def feed(self, text: str) -> list[str]:
+        self.pending += text
+        released: list[str] = []
+        while True:
+            match = SENTENCE_END_PATTERN.match(self.pending)
+            if not match:
+                break
+            sentence = match.group(0)
+            self.pending = self.pending[match.end():]
+            cleaned = _redact_reasoning_sentence(sentence)
+            if cleaned:
+                released.append(cleaned)
+        return released
+
+    def finish(self) -> list[str]:
+        remaining, self.pending = self.pending, ""
+        cleaned = _redact_reasoning_sentence(remaining)
+        return [cleaned] if cleaned else []
 
 
 def has_pseudo_tool_start(text: str) -> bool:

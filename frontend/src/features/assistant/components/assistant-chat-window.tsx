@@ -55,57 +55,57 @@ export function AssistantChatWindow({
           className="assistant-chat-history"
           aria-label="Chat history"
         >
-          <div className="assistant-chat-history-header">
-            <strong>{t("assistant.chatHistory", "Chat history")}</strong>
+            <div className="assistant-chat-history-header">
+              <strong>{t("assistant.chatHistory", "Chat history")}</strong>
+              <button
+                type="button"
+                className="assistant-chat-history-close"
+                onClick={onHistoryToggle}
+                aria-label={t("assistant.closeHistory", "Close chat history")}
+              >
+                <FiX aria-hidden="true" />
+              </button>
+            </div>
             <button
               type="button"
-              className="assistant-chat-history-close"
-              onClick={onHistoryToggle}
-              aria-label={t("assistant.closeHistory", "Close chat history")}
+              className="assistant-chat-new"
+              onClick={onNewChat}
             >
-              <FiX aria-hidden="true" />
+              <FiPlus aria-hidden="true" />
+              {t("assistant.newChat", "New chat")}
             </button>
-          </div>
-          <button
-            type="button"
-            className="assistant-chat-new"
-            onClick={onNewChat}
-          >
-            <FiPlus aria-hidden="true" />
-            {t("assistant.newChat", "New chat")}
-          </button>
-          <div
-            className="assistant-chat-session-list"
-            role="listbox"
-            aria-label={t("assistant.chatHistory", "Chat history")}
-          >
-            {sessions.map((session) => (
-              <div
-                className={`assistant-chat-session-row ${session.id === activeSessionId ? "is-active" : ""}`}
-                key={session.id}
-                role="option"
-                aria-selected={session.id === activeSessionId}
-              >
-                <button
-                  type="button"
-                  className="assistant-chat-session"
-                  onClick={() => onSelectSession(session.id)}
+            <div
+              className="assistant-chat-session-list"
+              role="listbox"
+              aria-label={t("assistant.chatHistory", "Chat history")}
+            >
+              {sessions.map((session) => (
+                <div
+                  className={`assistant-chat-session-row ${session.id === activeSessionId ? "is-active" : ""}`}
+                  key={session.id}
+                  role="option"
+                  aria-selected={session.id === activeSessionId}
                 >
-                  <FiMessageSquare aria-hidden="true" />
-                  <span>{session.title}</span>
-                </button>
-                <button
-                  type="button"
-                  className="assistant-chat-session-delete"
-                  onClick={() => onDeleteSession(session.id)}
-                  aria-label={`${t("assistant.deleteChat", "Delete chat")} ${session.title}`}
-                  title={t("assistant.deleteChat", "Delete chat")}
-                >
-                  <FiTrash2 aria-hidden="true" />
-                </button>
-              </div>
-            ))}
-          </div>
+                  <button
+                    type="button"
+                    className="assistant-chat-session"
+                    onClick={() => onSelectSession(session.id)}
+                  >
+                    <FiMessageSquare aria-hidden="true" />
+                    <span>{session.title}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="assistant-chat-session-delete"
+                    onClick={() => onDeleteSession(session.id)}
+                    aria-label={`${t("assistant.deleteChat", "Delete chat")} ${session.title}`}
+                    title={t("assistant.deleteChat", "Delete chat")}
+                  >
+                    <FiTrash2 aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
         </LiquidCard>
       )}
       <main className="assistant-chat-main">
