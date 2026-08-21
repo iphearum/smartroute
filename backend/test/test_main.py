@@ -9,10 +9,10 @@ from app.routing.registry import GraphRegistry, resolve_map_region
 from app.routing.graph_helper import GraphHelper
 from app.routing.router_engine import RouterEngine
 from app.routing.overlays import apply_database_overlays
-from app.services.business_service import BusinessService
-from app.services.inventory_service import InventoryService
-from app.services.product_service import ProductService
-from app.services.map_service import MapService
+from app.services.commerce.business_service import BusinessService
+from app.services.commerce.inventory_service import InventoryService
+from app.services.commerce.product_service import ProductService
+from app.services.map.map_service import MapService
 from app.support.google_maps import parse_google_maps_place, parse_google_maps_route
 
 

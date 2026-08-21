@@ -205,6 +205,7 @@ frontend/src/
       shop-admin-shell.tsx    -- shop navigation/content composition
       shop-location-panel.tsx -- live MapLibre branch map and editable location fields
       shop-platform-panel.tsx  -- reusable map mini-platform for shops and restaurants
+      shop-platform-content.tsx -- isolated search, filters, and place result list
       manage-shop-panel.tsx   -- REAL: list/create/edit/archive products+variants
       product-import-dialog.tsx -- REAL: CSV/XLSX drag-drop, preview, commit
       stock-panel.tsx         -- REAL: read/write inventory per branch
@@ -281,6 +282,14 @@ The search input performs client-side filtering of the available admin
 sections and restores the full navigation when cleared.
 The visible brand link always returns to the public map (`/`) from the
 top-level admin pages; the nested shop-management shell returns to `/shops`.
+
+Admin styling consumes the shared semantic theme through scoped `--admin-*`
+roles in `(admin)/admin.css`. Navigation, forms, KPI states, charts, inventory
+states, and availability badges must use those roles instead of introducing
+page-specific colors. Changing the global palette or adding a `[data-theme]`
+override therefore updates the admin shell and its recurring feature states
+without duplicating selectors across dashboard, shops, profile, or manage
+screens.
 
 `ShopLocationPanel` is the management boundary for physical shop location
 data. It reuses `useMaplibreMap` and the project basemap configuration rather

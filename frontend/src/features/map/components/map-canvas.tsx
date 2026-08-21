@@ -16,15 +16,20 @@ import { useRouteLayer } from "@/features/map/hooks/use-route-layer";
 import { useLatestRef } from "@/shared/hooks/use-latest-ref";
 import type { MapLayerVisibility } from "@/shared/state/app-shell-context";
 import { MapControlButton, MapControlGroup } from "@/shared/ui/map-controls";
+import { FiMinus, FiPlus } from "react-icons/fi";
 
 export function MapCanvas({
   poiFilters = [],
   language = "en",
   layerVisibility,
+  assistantOpen = false,
+  assistantWidth = 400,
 }: {
   poiFilters?: string[];
   language?: MapLanguage;
   layerVisibility: MapLayerVisibility;
+  assistantOpen?: boolean;
+  assistantWidth?: number;
 }) {
   const coordinates = useRouteStore((s) => s.coordinates),
     routes = useRouteStore((s) => s.routes),
@@ -55,7 +60,9 @@ export function MapCanvas({
     [calculatePointRef],
   );
 
-  const { elementRef, map, maplibre, mapReady } = useMaplibreMap({ onMapClick });
+  const { elementRef, map, maplibre, mapReady } = useMaplibreMap({
+    onMapClick,
+  });
   useMapLayerVisibility(map, mapReady, layerVisibility);
   useMapWindowCommands(map, maplibre);
   const places = useViewportPlaces(map, mapReady, language);
@@ -88,7 +95,10 @@ export function MapCanvas({
   );
 
   return (
-    <div className="absolute inset-0">
+    <div
+      className="absolute inset-y-0 left-0 transition-[right] duration-300 ease-out"
+      style={{ right: assistantOpen ? `min(${assistantWidth}px, 100vw)` : 0 }}
+    >
       <div
         ref={elementRef}
         className="absolute inset-0"
@@ -99,17 +109,13 @@ export function MapCanvas({
           onClick={() => map.current?.zoomIn({ duration: 240 })}
           aria-label="Zoom in"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <FiPlus aria-hidden="true" />
         </MapControlButton>
         <MapControlButton
           onClick={() => map.current?.zoomOut({ duration: 240 })}
           aria-label="Zoom out"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 12h14" />
-          </svg>
+          <FiMinus aria-hidden="true" />
         </MapControlButton>
       </MapControlGroup>
     </div>

@@ -26,8 +26,8 @@ python artisan migrate
 python main.py
 ```
 
-Open <http://127.0.0.1:8000>. API documentation is available at
-<http://127.0.0.1:8000/docs>.
+Open <http://127.0.0.1:8100>. API documentation is available at
+<http://127.0.0.1:8100/docs>.
 
 ## Artisan commands
 
@@ -219,7 +219,7 @@ Registered GraphML files can also be downloaded through the API:
 GET /maps/cambodia/<province>/graphml
 ```
 
-For example, `http://127.0.0.1:8000/maps/cambodia/siem_reap/graphml` downloads
+For example, `http://127.0.0.1:8100/maps/cambodia/siem_reap/graphml` downloads
 the Siem Reap road graph with a browser-friendly attachment filename.
 
 GraphML stores the runtime road graph used by NetworkX/A\*. PBF remains the
@@ -328,7 +328,7 @@ and renders them with Three.js in the same MapLibre depth buffer as buildings.
 ## Next.js frontend
 
 The maintainable map UI lives in `frontend/` and uses Next.js, TypeScript,
-Tailwind CSS, Zustand, and Leaflet. Keep FastAPI running on port 8000, then:
+Tailwind CSS, Zustand, and Leaflet. Keep FastAPI running on port 8100, then:
 
 ```bash
 cd ../frontend
@@ -349,7 +349,7 @@ DB_CONNECTION=sqlite
 DB_DATABASE=maps/maps.db
 SMARTROUTE_MAP_REGION=cambodia/phnom_penh
 APP_HOST=127.0.0.1
-APP_PORT=8000
+APP_PORT=8100
 APP_RELOAD=false
 ```
 
@@ -404,7 +404,7 @@ python -m pytest -q
 The repository root contains `ecosystem.config.cjs` with two independently
 managed services:
 
-- `smartroute-backend` runs FastAPI on `127.0.0.1:8000` using `backend/.venv`.
+- `smartroute-backend` runs FastAPI on `127.0.0.1:8100` using `backend/.venv`.
 - `smartroute-frontend` runs the production Next.js server on `0.0.0.0:3100`
   because ports 3000 and 3001 are already used by other local applications.
 

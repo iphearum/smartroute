@@ -9,7 +9,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from app.support.cambodia import REGIONS, province_polygon
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 from app.clients.osm_places import download_osm_places_from_polygon
 from config.settings import settings
 

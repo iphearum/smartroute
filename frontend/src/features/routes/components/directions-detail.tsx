@@ -34,7 +34,7 @@ export function DirectionsDetail({
   const minutes = Math.max(1, Math.round(route.duration / 60));
   return (
     <div>
-      <div className="border-b border-slate-200 px-4 py-4">
+      <div className="route-details-header border-b border-slate-200 px-4 py-4">
         <div className="flex items-start gap-3">
           <button
             onClick={onBack}

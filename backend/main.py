@@ -17,7 +17,7 @@ from app.clients.graphhopper import GraphHopperClient
 from app.routes.api import register_routes
 from app.routing.pbf import DEFAULT_PBF_PATH, MAPS_DIR
 from app.routing.registry import GraphRegistry, resolve_map_region
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 from config.settings import settings
 from scripts.convert_cambodia_pbf import DEFAULT_PBF, load_province_boundaries
 

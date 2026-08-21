@@ -1,0 +1,51 @@
+/* Responsive surface adaptations shared by map features. Desktop window
+   geometry remains in globals.css and feature files; this file owns only the
+   touch layout overrides that intentionally change those surfaces into sheets. */
+
+@media (max-width: 820px) {
+  .place-detail-shell {
+    position: fixed !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: min(82dvh, 720px) !important;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 8px) !important;
+    border-radius: 28px 28px 0 0 !important;
+    touch-action: auto;
+  }
+  .place-detail-shell .liquid-window-resize,
+  .place-detail-shell .place-detail-window-toggle {
+    display: none;
+  }
+  .place-detail-shell .place-detail-draghandle {
+    height: 24px;
+  }
+  .place-detail-shell .liquid-window-scroll {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .assistant-aside {
+    top: auto !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: min(90dvh, 760px) !important;
+    border-radius: 28px 28px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .assistant-aside-resize {
+    display: none;
+  }
+  .assistant-aside-header {
+    padding-top: calc(14px + env(safe-area-inset-top));
+  }
+  .assistant-chat-history {
+    top: 6px;
+    bottom: 6px;
+    left: 6px;
+    width: min(78vw, 280px);
+  }
+}

@@ -7,7 +7,7 @@ map registry, places, commerce, and currency concerns in one 757-line class.
 from __future__ import annotations
 
 from app.models.commerce import BranchSchedule, Business, ShopBranch, Storefront
-from app.services.availability_service import AvailabilityService
+from app.services.commerce.availability_service import AvailabilityService
 from app.models.place import Place
 from app.services.base_service import BaseService
 from app.support.slug import validate_slug

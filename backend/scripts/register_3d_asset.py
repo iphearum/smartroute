@@ -6,7 +6,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 from config.settings import settings
 
 

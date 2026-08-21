@@ -43,6 +43,27 @@ The map workspace uses a restrained liquid-glass surface language for floating U
 
 Use `LiquidCard` from `frontend/src/shared/ui/liquid.tsx` for standard surfaces, popovers, and pills. Use `LiquidSwitch` for compact selectable tab groups; the four-item bottom dock is its reference implementation. The dock is a quiet 60px outer capsule with evenly spaced tabs, 20px line icons, subdued inactive labels, and a flat near-circular active surface without its own border or shadow. The active fill uses the reference-style pale `--dock-active-background`, while icon, label, and hover color consume the theme's `--liquid-active-color`. Keep these dock overrides scoped below `.liquid-dock` so route-mode switches retain their own sizing. The planner menu control toggles the dock while shifting the planner and filter row to their collapsed offsets. Place data opens from the dock instead of a separate map overlay.
 
+Public global CSS is split by ownership: design tokens, shared liquid primitives,
+MapLibre integration, and window primitives remain in `app/globals.css`; route
+feature rules live in `features/routes/routes.css`; cross-feature mobile sheet
+adaptations live in `app/mobile-surfaces.css`; admin/shop-owner rules remain in
+`app/(admin)/admin.css`. Feature styles are imported once from the root layout,
+so components do not import global CSS and the cascade remains explicit.
+
+The color system has a raw `--palette-*` layer and a semantic `--color-*` layer.
+Components consume semantic roles for text, surfaces, borders, focus, brand, and
+status colors; the `--liquid-*` variables are the glass-theme API. Existing
+`--brand`/`--ink`/`--muted` aliases are compatibility names only. A future theme
+should override semantic and liquid variables under `[data-theme="..."]` rather
+than changing feature selectors. Raw colors remain acceptable only for
+MapLibre/external-library data or documented illustration-specific effects.
+Existing Tailwind palette utilities are covered by a semantic compatibility
+bridge at the end of `app/globals.css`; this keeps older views themeable while
+they move to feature-owned classes. New JSX must not add palette utility colors.
+The audit intentionally leaves MapLibre paint configuration, manifest metadata,
+POI category accents, and fixed illustration SVG fills as local integration or
+visual data rather than UI theme roles.
+
 The expanded route planner uses the same primitives: a `LiquidCard` popover contains a pill-shaped `LiquidSwitch` for travel modes, softly separated point cards, and liquid secondary actions. Active mode and point states use the shared active surface instead of underline tabs or stark white focus cards. Preserve route calculation, endpoint editing, search, geolocation, and swapping behavior when changing this presentation. On desktop, the planner is a constrained liquid window: only its dedicated header handle starts horizontal/vertical dragging, so inputs and actions remain interactive; its JSON position is persisted under `smartroute-window-position:route-planner-window` and clamped when the viewport changes.
 
 The combined car-and-motorbike mode uses one purpose-built, low-detail SVG with
@@ -90,6 +111,14 @@ The map remains the primary full-screen canvas and interface surfaces form a res
 
 The root document has no painted background or overscroll surface, and the workspace is fixed to all four viewport edges instead of relying on dynamic viewport height. This keeps the map flush with iOS standalone-mode edges and short mobile viewports instead of exposing a page-colored band. Mobile safe areas are enabled with `viewport-fit=cover`; top controls add `safe-area-inset-top`, while the dock and adjacent MapLibre controls add `safe-area-inset-bottom` so they remain usable without shortening the map canvas.
 
+The map workspace rail exposes real user actions: Explore is the default map
+view, Locate requests browser location, Place data opens the place-data surface,
+Directions opens the route planner, and Map tools contains Clear route, Focus
+route, and Reset map. Focus is disabled when no route exists; clearing a route
+requires confirmation. Keep these actions routed through the existing map
+command events so the rail, assistant menu, and right-side controls share one
+behavior owner.
+
 ## Progressive web app
 
 The frontend publishes `/manifest.webmanifest` from `frontend/src/app/manifest.ts`, registers `frontend/public/sw.js` from the root layout in production, and provides 192px, 512px, and Apple touch icons under `frontend/public/icons/`. Installed launches use standalone display mode and a translucent iOS status bar so the map remains the primary full-screen canvas. Development mode unregisters existing workers and clears `psarai-shell-*` caches because Turbopack can reuse chunk URLs; a cache-first development chunk can otherwise combine stale client code with fresh server HTML and cause hydration failures. In production, static assets use network-first delivery with cached offline fallback, and changing cache behavior requires incrementing `CACHE_NAME` so old entries are removed during activation. The local PMTiles archive and CARTO tiles remain outside Cache Storage. Online mode uses normal browser HTTP caching for CARTO and makes no PMTiles request. Hybrid mode uses HTTP range and in-memory caching for PMTiles and requests CARTO only when the local viewport rule does not cover the view.
@@ -104,3 +133,26 @@ the server and hydration snapshots, validates stored JSON after mount, shares
 updates between hook consumers, and handles browser `storage` events. Feature
 stores remain the runtime source consumed by UI components; hydrate them from
 the hook after mount rather than reading local storage during render.
+
+## UI translations
+
+User-facing interface strings are catalog data, not backend map-data
+translations. The English source catalog is
+`frontend/public/lang/en.json`; locale files such as `km.json` keep the same
+key structure. Components use `useI18n()` and provide the English string as a
+safe first-render fallback. The loader reads `/lang/{locale}.json`, caches it,
+and falls back to English if a locale file is unavailable.
+
+Add new UI strings to `en.json` first, then mirror the key in every supported
+locale. Do not translate tool names, enum values, coordinates, CSS classes, or
+API payloads. To generate a locale from the English catalog with the existing
+failure-tolerant translation service, run:
+
+```bash
+cd backend
+.venv/bin/python scripts/translate_ui_catalog.py --target km --force
+```
+
+Review generated translations before shipping them. The script preserves
+nested keys, never overwrites the English source, and supports future locales
+through another `--target` value.

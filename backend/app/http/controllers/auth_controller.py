@@ -7,7 +7,7 @@ from tortoise.exceptions import IntegrityError
 
 from app.http.controllers.base_controller import BaseController
 from app.http.requests.auth_requests import LoginRequest, SignupRequest, UserResource
-from app.services.user_service import UserService
+from app.services.auth.user_service import UserService
 from app.support.security import create_session_token, decode_session_token, verify_password
 from config.settings import settings
 

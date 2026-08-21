@@ -1,0 +1,347 @@
+/* Route feature styling. Shared tokens and liquid primitives remain in
+   app/globals.css; this file owns route labels, the planner card, and route
+   editing controls. It is imported once by app/layout.tsx. */
+
+.route-draw {
+  stroke-dasharray: var(--route-length);
+  stroke-dashoffset: var(--route-length);
+  animation: draw-route 0.7s cubic-bezier(0.22, 0.75, 0.25, 1) forwards;
+}
+.route-info-icon {
+  overflow: visible !important;
+  background: transparent;
+  border: 0;
+}
+.route-info-label {
+  --route-pointer-x: 48px;
+  --route-card-background: var(--liquid-background);
+  --route-card-border: var(--liquid-border);
+  position: relative;
+  width: 96px;
+  min-height: 46px;
+  padding: 6px 9px 5px;
+  border: 1px solid var(--route-card-border);
+  border-radius: 14px;
+  background: var(--route-card-background);
+  color: var(--color-text-primary);
+  font:
+    600 11px/1.25 Manrope,
+    Arial,
+    sans-serif;
+  text-align: left;
+  white-space: nowrap;
+  box-shadow: var(--liquid-shadow);
+  cursor: pointer;
+  transition:
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.route-info-label::before,
+.route-info-label::after {
+  position: absolute;
+  left: var(--route-pointer-x);
+  width: 0;
+  height: 0;
+  content: "";
+  border-style: solid;
+}
+.route-info-label.pointer-left {
+  --route-pointer-x: 18px;
+}
+.route-info-label.pointer-center {
+  --route-pointer-x: 48px;
+}
+.route-info-label.pointer-right {
+  --route-pointer-x: 78px;
+}
+.route-info-label::before {
+  bottom: -8px;
+  border-width: 8px 6px 0;
+  border-color: var(--route-card-border) transparent transparent;
+}
+.route-info-label::after {
+  bottom: -6px;
+  border-width: 7px 5px 0;
+  border-color: var(--route-card-background) transparent transparent;
+}
+.route-info-label:hover,
+.route-info-label:focus-visible {
+  --route-card-background: var(--liquid-hover-background);
+  box-shadow: 0 10px 24px var(--liquid-shadow-color);
+  outline: none;
+}
+.route-info-label span,
+.route-info-label small {
+  display: block;
+}
+.route-info-label span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.route-info-label .route-vehicle {
+  display: inline-block;
+  flex: 0 0 auto;
+  font-size: 17px;
+  font-style: normal;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+.route-info-label .route-vehicle svg {
+  display: block;
+  width: 25px;
+  height: 17px;
+}
+.route-info-label strong {
+  color: var(--color-brand-primary);
+  font-size: 13px;
+}
+.route-info-label small {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+.route-info-label.active {
+  --route-card-background: var(--liquid-active-background);
+  --route-card-border: color-mix(
+    in srgb,
+    var(--color-surface-highlight) 90%,
+    transparent
+  );
+  box-shadow:
+    0 8px 20px color-mix(in srgb, var(--color-brand-primary) 16%, transparent),
+    inset 0 1px 0
+      color-mix(in srgb, var(--color-surface-highlight) 100%, transparent);
+}
+.route-info-label.active strong {
+  color: var(--liquid-active-color);
+}
+@keyframes draw-route {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+.planner-panel {
+  left: 20px;
+}
+.route-planner-card {
+  border-color: var(--liquid-border);
+  background: var(--liquid-popover-background);
+  box-shadow:
+    0 2px 4px
+      color-mix(in srgb, var(--color-surface-highlight) 70%, transparent),
+    0 22px 58px var(--liquid-shadow-color),
+    inset 0 1px 0
+      color-mix(in srgb, var(--color-surface-highlight) 96%, transparent),
+    inset 0 -1px 0
+      color-mix(in srgb, var(--color-surface-highlight) 30%, transparent);
+}
+.route-planner-header strong {
+  letter-spacing: -0.025em;
+}
+.route-planner-drag-handle {
+  display: grid;
+  width: 24px;
+  height: 42px;
+  flex: 0 0 24px;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+}
+.route-planner-drag-handle:active {
+  cursor: grabbing;
+}
+.route-planner-drag-handle span {
+  width: 4px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-brand-primary) 22%, transparent),
+    color-mix(in srgb, var(--color-brand-primary) 55%, transparent),
+    color-mix(in srgb, var(--color-brand-primary) 22%, transparent)
+  );
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-surface-highlight) 32%, transparent);
+}
+.route-planner-drag-handle:focus-visible {
+  border-radius: 12px;
+  outline: 2px solid
+    color-mix(in srgb, var(--color-brand-primary) 55%, transparent);
+  outline-offset: 2px;
+}
+.route-mode-shell {
+  box-shadow:
+    0 4px 14px var(--liquid-shadow-color),
+    inset 0 1px 0
+      color-mix(in srgb, var(--color-surface-highlight) 100%, transparent);
+}
+.route-mode-switch {
+  gap: 3px;
+}
+.route-mode-switch .liquid-switch-item {
+  height: 48px;
+  border-radius: 22px;
+  font-size: 9px;
+  text-transform: capitalize;
+}
+.route-mode-switch .liquid-switch-icon,
+.route-mode-switch .liquid-switch-icon svg {
+  width: 21px;
+  height: 21px;
+}
+.route-mode-switch .liquid-switch-icon svg {
+  fill: currentColor;
+  stroke: none;
+}
+.route-mode-switch .liquid-switch-item.active {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-surface-highlight) 82%, transparent);
+}
+.route-point-card {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-surface-soft) 72%, transparent);
+  cursor: text;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.route-point-marker {
+  filter: drop-shadow(
+    0 2px 2px color-mix(in srgb, var(--color-text-primary) 25%, transparent)
+  );
+}
+.route-point-card:hover {
+  background: var(--liquid-hover-background);
+}
+.route-point-card.active {
+  border-color: color-mix(in srgb, var(--color-brand-primary) 50%, transparent);
+  background: var(--liquid-background);
+  box-shadow:
+    0 7px 18px color-mix(in srgb, var(--color-brand-primary) 10%, transparent),
+    inset 0 0 0 1px
+      color-mix(in srgb, var(--color-surface-highlight) 86%, transparent);
+}
+.route-add-action {
+  border: 1px dashed
+    color-mix(in srgb, var(--color-brand-primary) 30%, transparent);
+  background: color-mix(in srgb, var(--color-surface-page) 66%, transparent);
+  color: var(--liquid-active-color);
+}
+.route-add-action:hover,
+.route-secondary-action:hover {
+  background: var(--liquid-hover-background);
+}
+.route-secondary-action {
+  border: 1px solid var(--liquid-border);
+  background: var(--liquid-background);
+  box-shadow:
+    0 4px 12px var(--liquid-shadow-color),
+    inset 0 1px 0
+      color-mix(in srgb, var(--color-surface-highlight) 100%, transparent);
+}
+.route-status {
+  border: 1px solid
+    color-mix(in srgb, var(--color-surface-highlight) 72%, transparent);
+  background: color-mix(in srgb, var(--color-surface-soft) 62%, transparent);
+}
+.route-summary-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--liquid-border);
+  border-left: 3px solid var(--color-brand-primary);
+  border-radius: 18px;
+  background: var(--liquid-popover-background);
+  box-shadow: var(--liquid-shadow);
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+.route-summary-card:hover,
+.route-summary-card:focus-visible {
+  background: var(--liquid-hover-background);
+  box-shadow: 0 10px 24px var(--liquid-shadow-color);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  transform: translateY(-1px);
+}
+.route-summary-header,
+.route-summary-footer,
+.route-summary-stops span {
+  display: flex;
+  align-items: center;
+}
+.route-summary-header {
+  gap: 18px;
+}
+.route-summary-header > span {
+  display: grid;
+  gap: 2px;
+}
+.route-summary-header small {
+  color: var(--color-text-muted);
+  font-size: 9px;
+}
+.route-summary-header strong {
+  color: var(--color-text-primary);
+  font-size: 18px;
+  line-height: 1;
+}
+.route-summary-header > span:nth-child(2) strong {
+  font-size: 12px;
+}
+.route-summary-chevron {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  color: var(--liquid-active-color);
+}
+.route-summary-stops {
+  display: grid;
+  gap: 5px;
+  padding-top: 2px;
+  border-top: 1px solid var(--liquid-border);
+}
+.route-summary-stops span {
+  min-width: 0;
+  gap: 7px;
+  color: var(--color-text-primary);
+  font-size: 11px;
+}
+.route-summary-stops strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.route-summary-stops i {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-status-info);
+}
+.route-summary-stops i.start {
+  background: var(--color-brand-primary);
+}
+.route-summary-stops i.end {
+  background: var(--color-status-danger);
+}
+.route-summary-footer {
+  justify-content: space-between;
+  color: var(--color-text-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+.route-summary-footer span:last-child {
+  color: var(--liquid-active-color);
+}

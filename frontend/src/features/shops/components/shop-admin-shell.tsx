@@ -11,6 +11,7 @@ import { StockPanel } from "./stock-panel";
 import { PosPanel } from "./pos-panel";
 import { PayrollPanel } from "./payroll-panel";
 import { OtherInfoPanel } from "./other-info-panel";
+import { Icon } from "@/shared/ui/icon";
 
 const sections = [
   {
@@ -55,7 +56,9 @@ export function ShopAdminShell() {
       brandHref="/shops"
       brand={
         <>
-          <span className="shop-logo shop-logo-sm">🏪</span>
+          <span className="shop-logo shop-logo-sm">
+            <Icon name="box" />
+          </span>
           <span className="shop-shell-back-label">Shop admin</span>
         </>
       }

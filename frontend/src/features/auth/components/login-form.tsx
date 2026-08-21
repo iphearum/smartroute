@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LiquidCard } from "@/shared/ui/liquid";
 import { useAuthStore } from "../store/auth-store";
+import { useI18n } from "@/features/i18n/use-i18n";
 
 export function LoginForm() {
   const [email, setEmail] = useState(""),
@@ -12,6 +13,7 @@ export function LoginForm() {
     login = useAuthStore((s) => s.login),
     error = useAuthStore((s) => s.error),
     router = useRouter();
+  const t = useI18n();
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
@@ -28,13 +30,13 @@ export function LoginForm() {
       <p className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-700">
         Welcome back
       </p>
-      <strong className="text-lg">Log in</strong>
+      <strong className="text-lg">{t("auth.login", "Log in")}</strong>
       <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
         <input
           type="email"
           required
           autoComplete="email"
-          placeholder="Email"
+          placeholder={t("auth.email", "Email")}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           className="route-point-card h-11 rounded-[16px] border px-3 text-sm outline-none"
@@ -43,7 +45,7 @@ export function LoginForm() {
           type="password"
           required
           autoComplete="current-password"
-          placeholder="Password"
+          placeholder={t("auth.password", "Password")}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="route-point-card h-11 rounded-[16px] border px-3 text-sm outline-none"
@@ -54,7 +56,9 @@ export function LoginForm() {
           disabled={submitting}
           className="h-11 rounded-[16px] bg-emerald-700 text-sm font-bold text-white disabled:opacity-50"
         >
-          {submitting ? "Logging in…" : "Log in"}
+          {submitting
+            ? t("common.loading", "Loading…")
+            : t("auth.login", "Log in")}
         </button>
       </form>
       <p className="mt-4 text-center text-xs text-slate-500">

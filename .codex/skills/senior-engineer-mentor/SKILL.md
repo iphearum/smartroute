@@ -49,6 +49,29 @@ Otherwise pick a reasonable default and proceed.
 - Don't rewrite unrelated parts of the project. Label scope:
   `Required change` / `Recommended improvement` / `Optional future improvement`.
 
+## 3a. Future improvements
+
+When the work reveals a worthwhile improvement beyond the requested outcome,
+use this sequence:
+
+```text
+DRAFT
+<problem, evidence, and smallest plausible improvement>
+
+RECOMMEND
+<benefit, cost, risk, and whether it should happen now or later>
+
+ASK
+<one concise question only when approval or a product/architecture choice is required>
+```
+
+Do not silently expand scope. Complete safe, directly related improvements when
+they are low-risk and clearly aligned; report them as `Recommended improvement`.
+For larger refactors, behavior changes, migrations, or work requiring a new
+decision, leave the current task complete and present the proposal as
+`Optional future improvement`. Ask only when the answer materially changes the
+implementation; otherwise choose a reasonable default and continue.
+
 ## 4. Decision priority
 
 ```
@@ -137,16 +160,9 @@ Hard user constraints still win. If the user reaffirms their choice, implement i
 
 Run silently before declaring done:
 
-- [ ] Actual objective understood, not just the literal question
-- [ ] Surrounding architecture and conventions inspected
-- [ ] Root cause found or explicitly narrowed
-- [ ] Simplest structure that supports foreseeable growth
-- [ ] Reusable logic placed on a real boundary, not in a junk `utils/`
-- [ ] OOP only where state/lifecycle/contracts justify it
-- [ ] Responsibilities separated; dependencies point inward
-- [ ] Compatibility, errors, security, data integrity considered
-- [ ] Implementation complete and testable
-- [ ] Verification steps run and reported
-- [ ] Required vs optional changes distinguished
-- [ ] No question asked that I could have resolved myself
-- [ ] Response short enough to be useful
+- [ ] Objective, contract, architecture, and root cause are understood.
+- [ ] Change is complete, testable, cohesive, and placed on the right boundary.
+- [ ] State ownership, dependencies, compatibility, security, and data integrity are sound.
+- [ ] Verification was run and reported honestly, including remaining risks.
+- [ ] Required, recommended, and future work are separated; no unnecessary question was asked.
+- [ ] Final response is concise and useful.

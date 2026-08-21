@@ -23,12 +23,12 @@ from app.http.requests.commerce_requests import (BranchCreate, BusinessCreate,
                                                  BranchUpdate, OrderCreate, PayrollRunCreate,
                                                  StaffCreate, StaffUpdate, PlaceUpdate,
                                                  BranchScheduleCreate)
-from app.services.business_service import BusinessService
-from app.services.exchange_rate_service import ExchangeRateService
-from app.services.inventory_service import InventoryService
-from app.services.product_service import ProductService
-from app.services.operations_service import OperationsService
-from app.services.availability_service import AvailabilityService
+from app.services.commerce.business_service import BusinessService
+from app.services.commerce.exchange_rate_service import ExchangeRateService
+from app.services.commerce.inventory_service import InventoryService
+from app.services.commerce.product_service import ProductService
+from app.services.commerce.operations_service import OperationsService
+from app.services.commerce.availability_service import AvailabilityService
 from app.clients.nbc_exchange import NbcExchangeRateError, fetch_nbc_rates
 from app.support.product_import import (MAX_UPLOAD_BYTES, ImportRow, ProductImportError,
                                      parse_products)

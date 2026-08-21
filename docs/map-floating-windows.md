@@ -2,13 +2,14 @@
 
 ## Scope
 
-The public map hosts three floating windows that share one behavior contract:
+The public map hosts four floating windows that share one behavior contract:
 
 | Window | Component | Session id |
 | --- | --- | --- |
 | Place details | `features/places/components/place-detail-panel.tsx` | `place-detail-window` |
 | Shop mini-platform | `features/shops/components/shop-platform-panel.tsx` | `shop-platform-window` |
 | Route planner sheet | `features/routes/components/route-panel.tsx` | `route-planner-window` |
+| AI map copilot | `features/assistant/components/ai-map-assistant.tsx` | `ai-assistant-window` |
 
 The shared pieces live in `shared/`:
 
@@ -16,8 +17,55 @@ The shared pieces live in `shared/`:
 shared/hooks/use-window-session.ts   persisted geometry, open/maximized, stacking order
 shared/hooks/use-window-frame.ts     pointer drag + eight-direction resize on top of the session
 shared/ui/window-resize-handles.tsx  the eight edge and corner hit targets
+shared/ui/mini-platform-aside.tsx    right-docked, width-resizable glass aside shell
+shared/ui/mini-platform-dock.tsx     one aside shared by many feature panels + its launcher rail
 app/globals.css                      .resizable-liquid-window, .liquid-window-scroll, .liquid-window-resize-*
 ```
+
+### Many features, one aside
+
+`MiniPlatformAside` is the shell: glass chrome, the resize edge, the collapsed
+rail container. `MiniPlatformDock` is what features are registered against. It
+takes a `MiniPlatformPanel[]` — `id`, `railLabel`, `icon`, `title`, `ariaLabel`,
+optional `status`/`headerActions`, and `content` — and renders **one** aside
+holding the active panel.
+
+Panels cannot drift apart in size, position or chrome, because there is only
+ever one window: switching a panel swaps `children`, never the shell. Both
+affordances are loops over the same array, so a new feature is one entry and no
+new markup:
+
+- **collapsed** — a rail launcher per panel, each opening straight into its view
+- **open** — a tab per panel in the header, switching without closing
+
+The dock passes `showCollapsedButton={false}` and draws the whole rail itself;
+the aside's built-in single launcher would otherwise be a hand-written duplicate
+of the first entry. `open` is controlled by the dock's owner, because the rail
+launchers sit outside the aside and the map layout reserves `width` while it is
+open. The Map AI dock registers the copilot chat and the Shop Window view
+rendered by `ShopPlatformContent`.
+
+The copilot's `AssistantChatWindow` is an internal workspace, not another
+floating window. Its history rail and main chat context live inside the single
+`MiniPlatformAside`; they must not mount a second fixed `.assistant-aside-layer`,
+duplicate resize ownership, or persist competing geometry.
+
+Panel content switches through a keyed `AnimatePresence` transition inside the
+shared aside. The active view enters with a short horizontal fade and the prior
+view exits before the next one is shown, so MAP AI, Shops, and future panels
+share the same motion contract without animating the dock's geometry. The
+transition is disabled when the user prefers reduced motion. The active panel's
+header title, status, and header actions use the same keyed transition; the
+close control and tab strip remain stable while switching.
+
+The aside is the one surface here that is **docked, not free floating**. It
+takes stacking, open state and the persisted record from `useWindowFrame`, but
+passes `locked` and never applies `frameStyle`: the map viewport reserves its
+width on the right and `MapActionControls` offsets itself by the same value, so
+a committed `x`/`y` would set `right: auto` and slide the panel out from under
+that reservation. Width is the only geometry it owns — the left edge handle
+writes it through `update({ width })`, and a record carrying an `x`/`y`/`height`
+from an earlier build is normalized back to zero on mount.
 
 ## Positioning contract
 
@@ -53,6 +101,23 @@ The route planner is the documented exception: its sheet still moves with
 framer-motion motion values, so its stored `x`/`y` are translate offsets rather
 than viewport coordinates. It is not resizable, and its `expanded` state is not
 restored because the sheet's content depends on the in-memory route store.
+
+On mobile, the route planner is a bottom sheet rather than a desktop window.
+It opens at a peek snap for map context, moves through a half-open editing snap,
+and reaches a full directions snap. The drag handle, keyboard arrows, and
+Enter/Space cycle these states; a sufficiently fast or deep downward swipe
+dismisses the sheet. The route header remains sticky while the card scrolls.
+Persisted desktop `x`/`y` offsets are ignored while the sheet is mobile so a
+desktop drag cannot push the mobile directions panel off-screen. The sheet
+reserves the device bottom safe area and keeps scrolling inside the glass card.
+
+The other map windows follow the same mobile separation of roles. Place details
+use a bottom-anchored sheet with a scrollable body; desktop resize, move, and
+maximize controls are hidden on touch screens. The AI/shop dock becomes a
+bottom-anchored, near-full-height panel with its own scrolling content. A short
+POI marker preview remains a small anchored floating card because it does not
+contain a long workflow. Desktop continues to use the persisted floating or
+docked window behavior described below.
 
 ## Dragging
 
@@ -117,6 +182,12 @@ growing with the frame. The shop mini-platform showed this: its result list caps
 at `min(52vh, 430px)` so the unsized window opens compact, but in an 820px tall
 window the list stayed 430px and left 240px of dead space below it. The cap
 still applies while the window is unsized, so default windows are unchanged.
+
+The shared Mini Platform aside is a full-height dock rather than an unsized
+floating window. Its shop view removes this cap so `.shop-platform-results`
+uses the remaining aside height and remains the scroll owner when the result
+set is longer than the viewport. The standalone shop window retains the
+compact cap above.
 
 A window taller than its content still shows empty space below that content —
 that is the frame being larger than what fills it, not a layout fault.

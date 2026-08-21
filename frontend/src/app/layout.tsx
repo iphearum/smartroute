@@ -5,6 +5,8 @@ import { AuthBootstrap } from "@/features/auth/components/auth-bootstrap";
 import { ToastViewport } from "@/shared/ui/toast";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
+import "@/features/routes/routes.css";
+import "./mobile-surfaces.css";
 
 const appName = process.env.APP_NAME || "PsarAI";
 const appDescription =

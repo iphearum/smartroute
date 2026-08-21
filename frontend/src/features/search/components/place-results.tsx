@@ -30,8 +30,8 @@ export function PlaceResults({
             ) : (
               <LocationPin
                 size={25}
-                color="#047857"
-                shadowColor="#475569"
+                color="var(--color-brand-primary)"
+                shadowColor="var(--color-text-secondary)"
                 shadowOpacity={0.8}
               />
             )}

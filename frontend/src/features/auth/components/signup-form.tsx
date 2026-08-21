@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LiquidCard } from "@/shared/ui/liquid";
 import { useAuthStore } from "../store/auth-store";
+import { useI18n } from "@/features/i18n/use-i18n";
 
 export function SignupForm() {
   const [displayName, setDisplayName] = useState(""),
@@ -13,6 +14,7 @@ export function SignupForm() {
     signup = useAuthStore((s) => s.signup),
     error = useAuthStore((s) => s.error),
     router = useRouter();
+  const t = useI18n();
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
@@ -29,12 +31,14 @@ export function SignupForm() {
       <p className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-700">
         Get started
       </p>
-      <strong className="text-lg">Create your account</strong>
+      <strong className="text-lg">
+        {t("auth.createAccount", "Create your account")}
+      </strong>
       <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
         <input
           type="text"
           autoComplete="name"
-          placeholder="Name (optional)"
+          placeholder={t("auth.nameOptional", "Name (optional)")}
           value={displayName}
           onChange={(event) => setDisplayName(event.target.value)}
           className="route-point-card h-11 rounded-[16px] border px-3 text-sm outline-none"
@@ -43,7 +47,7 @@ export function SignupForm() {
           type="email"
           required
           autoComplete="email"
-          placeholder="Email"
+          placeholder={t("auth.email", "Email")}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           className="route-point-card h-11 rounded-[16px] border px-3 text-sm outline-none"
@@ -53,7 +57,7 @@ export function SignupForm() {
           required
           minLength={8}
           autoComplete="new-password"
-          placeholder="Password (min 8 characters)"
+          placeholder={t("auth.passwordHint", "Password (min 8 characters)")}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="route-point-card h-11 rounded-[16px] border px-3 text-sm outline-none"

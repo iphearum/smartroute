@@ -2,6 +2,7 @@
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/features/auth/store/auth-store";
 import { AdminShell } from "@/features/admin/components/admin-shell";
+import { Icon } from "@/shared/ui/icon";
 
 const sections = [
   {
@@ -36,7 +37,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       activeKey={active.key}
       brand={
         <>
-          <span className="shop-logo shop-logo-sm">🛍️</span>
+          <span className="shop-logo shop-logo-sm">
+            <Icon name="box" />
+          </span>
           <span className="shop-shell-back-label">PsarAI</span>
         </>
       }

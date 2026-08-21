@@ -121,7 +121,9 @@ function DashboardContent() {
             ) : business ? (
               <>
                 <div className="flex items-center gap-4">
-                  <span className="shop-logo">🏪</span>
+                  <span className="shop-logo">
+                    <Icon name="box" />
+                  </span>
                   <span className="min-w-0 flex-1">
                     <strong className="block text-base">
                       {business.display_name}

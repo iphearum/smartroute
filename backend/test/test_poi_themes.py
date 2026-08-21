@@ -1,7 +1,7 @@
 import asyncio
 
 from services.map_models import PoiTheme
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 
 
 def test_poi_themes_returns_active_rows_ordered_by_match_order(tmp_path):

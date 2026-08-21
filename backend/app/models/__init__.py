@@ -17,6 +17,7 @@ from __future__ import annotations
 from app.models.commerce import (BranchSchedule, Business, InventoryItem, Order, OrderItem,
                                  PayrollRun, Product, ProductVariant, ShopBranch, StaffMember,
                                  Storefront)
+from app.models.assistant import AssistantSession
 from app.models.exchange_rate import ExchangeRate
 from app.models.map import (CustomRoute, MapImage, MapRecord, MapRevision, RoadClosure,
                             default_travel_modes)
@@ -30,6 +31,7 @@ __models__ = [
     Business, ShopBranch, BranchSchedule, Storefront, Product, ProductVariant, InventoryItem,
     Order, OrderItem, StaffMember, PayrollRun,
     ExchangeRate,
+    AssistantSession,
 ]
 
 __all__ = [model.__name__ for model in __models__] + ["default_travel_modes"]

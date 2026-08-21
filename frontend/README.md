@@ -8,7 +8,7 @@ npm install
 npm run dev
 ```
 
-Run FastAPI at `http://127.0.0.1:8000` and open the frontend at
+Run FastAPI at `http://127.0.0.1:8100` and open the frontend at
 `http://127.0.0.1:3000`. Change `FASTAPI_URL` when the backend uses another URL.
 
 ## Structure

@@ -3,7 +3,7 @@
 ## Status and scope
 
 This document defines the next implementation steps for Telegram-style messaging
-embedded in the SmartRoute map. It is an architecture and delivery plan, not a
+embedded in the Smart Route map. It is an architecture and delivery plan, not a
 claim that messaging is already implemented.
 
 The first release supports direct and group conversations, reliable text

@@ -1,6 +1,6 @@
 import asyncio
 
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 from app.support.tile_cache import TileCache
 
 

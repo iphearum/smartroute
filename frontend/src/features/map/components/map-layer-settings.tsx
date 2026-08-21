@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { MapControlButton, MapControlGroup } from "@/shared/ui/map-controls";
+import { FiLayers } from "react-icons/fi";
 import {
   mapLayerOptions,
   mapLayerPresets,
@@ -37,10 +38,7 @@ export function MapLayerSettings({ children }: { children: ReactNode }) {
           aria-controls="map-layer-settings"
           className={open ? "active" : undefined}
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m12 3-9 5 9 5 9-5-9-5Z" />
-            <path d="m3 12 9 5 9-5M3 16l9 5 9-5" />
-          </svg>
+          <FiLayers aria-hidden="true" />
         </MapControlButton>
         {children}
       </MapControlGroup>

@@ -7,9 +7,12 @@ import { routesApi } from "@/features/routes/api/routes-api";
 import { Icon } from "@/shared/ui/icon";
 import { useWindowFrame } from "@/shared/hooks/use-window-frame";
 import { WindowResizeHandles } from "@/shared/ui/window-resize-handles";
-import { isShopPlace, shopPlaceGroup } from "../lib/shop-place";
+import { isShopPlace } from "../lib/shop-place";
+import {
+  ShopPlatformContent,
+  type ShopFilter,
+} from "./shop-platform-content";
 
-type ShopFilter = "all" | "restaurant" | "shop";
 type AnchorRect = { left: number; top: number; width: number; height: number };
 
 export function ShopPlatformPanel() {
@@ -73,9 +76,6 @@ export function ShopPlatformPanel() {
     };
   }, [open, query]);
 
-  const visiblePlaces = places.filter(
-    (place) => filter === "all" || shopPlaceGroup(place) === filter,
-  );
   const openPlace = (place: Place) => {
     window.dispatchEvent(
       new CustomEvent("smartroute:open-place-detail", { detail: place }),
@@ -181,83 +181,15 @@ export function ShopPlatformPanel() {
               <h2>Shops, restaurants & stores</h2>
               <p>Explore places on the map and open their details.</p>
             </div>
-            <div className="shop-platform-search-wrap">
-              <Icon name="search" className="h-4 w-4" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search shops or restaurants"
-                aria-label="Search shops and restaurants"
-              />
-            </div>
-            <div
-              className="shop-platform-filters"
-              role="tablist"
-              aria-label="Shop categories"
-            >
-              {(["all", "restaurant", "shop"] as const).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  role="tab"
-                  aria-selected={filter === item}
-                  className={filter === item ? "active" : ""}
-                  onClick={() => setFilter(item)}
-                >
-                  {item === "all"
-                    ? "All places"
-                    : item === "restaurant"
-                      ? "Restaurants"
-                      : "Shops & stores"}
-                </button>
-              ))}
-            </div>
-            <div
-              className="shop-platform-results liquid-window-scroll"
-              aria-live="polite"
-            >
-              {loading ? (
-                <p className="place-detail-empty">Loading places…</p>
-              ) : visiblePlaces.length ? (
-                visiblePlaces.map((place) => (
-                  <button
-                    type="button"
-                    className="shop-platform-result"
-                    key={`${place.id || place.name}-${place.latitude}`}
-                    onClick={() => openPlace(place)}
-                  >
-                    <span className="shop-platform-result-icon">
-                      <Icon
-                        name={
-                          shopPlaceGroup(place) === "restaurant"
-                            ? "register"
-                            : "box"
-                        }
-                        className="h-4 w-4"
-                      />
-                    </span>
-                    <span className="min-w-0 flex-1 text-left">
-                      <strong>{place.name}</strong>
-                      <span>
-                        {(place.category || shopPlaceGroup(place)).replaceAll(
-                          "_",
-                          " ",
-                        )}
-                        {place.address ? ` · ${place.address}` : ""}
-                      </span>
-                    </span>
-                    <Icon
-                      name="chevron-left"
-                      className="h-3.5 w-3.5 rotate-180"
-                    />
-                  </button>
-                ))
-              ) : (
-                <p className="place-detail-empty">
-                  No shops or restaurants found.
-                </p>
-              )}
-            </div>
+            <ShopPlatformContent
+              query={query}
+              onQueryChange={setQuery}
+              filter={filter}
+              onFilterChange={setFilter}
+              places={places}
+              loading={loading}
+              onPlaceSelect={openPlace}
+            />
           </motion.section>
         )}
       </AnimatePresence>

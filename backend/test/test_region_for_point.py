@@ -1,7 +1,7 @@
 import asyncio
 
 from services.map_models import OsmFeature
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 
 
 def _square(min_lon, min_lat, max_lon, max_lat):

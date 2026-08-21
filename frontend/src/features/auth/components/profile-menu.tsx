@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LiquidCard } from "@/shared/ui/liquid";
 import { MapControlButton, MapControlGroup } from "@/shared/ui/map-controls";
+import { Icon } from "@/shared/ui/icon";
+import { LanguageSwitcher } from "@/features/i18n/components/language-switcher";
 import { useAuthStore } from "../store/auth-store";
 
 function initials(name: string) {
@@ -20,7 +22,6 @@ export function ProfileMenu() {
     user = useAuthStore((s) => s.user),
     logout = useAuthStore((s) => s.logout),
     router = useRouter();
-
   useEffect(() => {
     if (!open) return;
     const closeOutside = (event: PointerEvent) => {
@@ -47,10 +48,7 @@ export function ProfileMenu() {
       <div className="map-profile-control">
         <MapControlGroup label="Account" className="opacity-60">
           <MapControlButton disabled aria-label="Loading account">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" />
-            </svg>
+            <Icon name="user" />
           </MapControlButton>
         </MapControlGroup>
       </div>
@@ -61,10 +59,7 @@ export function ProfileMenu() {
       <div className="map-profile-control">
         <MapControlGroup label="Account">
           <Link href="/login" aria-label="Log in">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" />
-            </svg>
+            <Icon name="user" />
           </Link>
         </MapControlGroup>
       </div>
@@ -93,6 +88,7 @@ export function ProfileMenu() {
           <p className="truncate px-3 pb-2 pt-1 text-xs font-semibold text-slate-500">
             {label}
           </p>
+          <LanguageSwitcher />
           {[
             { href: "/dashboard", label: "Dashboard" },
             { href: "/shops", label: "Shops" },

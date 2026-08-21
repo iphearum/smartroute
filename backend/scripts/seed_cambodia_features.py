@@ -14,7 +14,7 @@ from tqdm import tqdm
 from app.support.cambodia import REGIONS
 from scripts.convert_cambodia_pbf import DEFAULT_PBF, _pyrosm, load_province_boundaries
 from services.map_models import OsmFeature
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 from config.settings import settings
 
 FEATURE_TYPES = ("buildings", "pois", "boundaries", "landuse", "natural")

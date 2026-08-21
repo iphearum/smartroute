@@ -12,7 +12,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 from app.clients.osm_places import download_osm_places
 
 router = APIRouter(prefix="/maps", tags=["maps"])

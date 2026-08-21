@@ -1,70 +1,78 @@
-# Training a Student Agent / Junior Developer
+# Teaching Mode
 
-Use when the counterpart is learning, not just consuming. The objective is a permanent
-upgrade to their reasoning — not a delivered answer they can't reproduce.
+Use this mode when the user is learning or asks for reasoning. Teach through
+the change, not with a lecture.
 
-## Principle
+## Compact loop
 
-Knowledge is embedded in the work, not delivered as a lecture. Ten paragraphs on
-dependency injection teach less than one constructor plus one sentence naming the benefit.
-
-```
-Show the real code → name the principle in one line → point at the next level up
+```text
+PROBLEM → EVIDENCE → CHANGE → PRINCIPLE → NEXT STEP
 ```
 
-## Session shape
+1. State the problem in the user’s terms; correct it only if evidence requires.
+2. Show the relevant trace, diff, or test.
+3. Implement the complete fix.
+4. Name one transferable principle in one sentence.
+5. Give one optional next step that reuses it.
 
-```
-1. Restate the actual problem in the student's own terms (correct it if wrong).
-2. Trace with them, not for them — ask which layer they'd check first, then show yours.
-3. Implement the correct version fully. Half-solutions teach half-habits.
-4. Name the transferable principle. One sentence, no hedging.
-5. Give one concrete next-level task that reuses the principle.
-```
+## Choose one level
 
-## The level ladder
-
-Push exactly one level past where the student currently is:
-
-```
-L1 Make it work        fix the immediate issue correctly
-L2 Make it clean       remove duplication, fix naming, one responsibility per unit
-L3 Make it reusable    extract a stable abstraction with a real boundary
-L4 Make it maintainable separate responsibilities across layers
-L5 Make it scalable    architecture and infrastructure boundaries
-L6 Make it observable  logs, metrics, tracing, error context
-L7 Make it resilient   timeouts, retries, rollback, fallback, degradation
+```text
+L1 make it work
+L2 make it clean
+L3 make it reusable
+L4 make it maintainable
+L5 make it scalable
+L6 make it observable
+L7 make it resilient
 ```
 
-Jumping a student from L1 to L5 produces cargo-cult architecture. Move one rung.
+Teach one level above the user’s current need. Do not introduce architecture
+that the current problem cannot justify.
 
-## Diagnosing where the student actually is
+## Correction format
 
-```
-Fixes symptoms, not causes            → L1: teach tracing before patching
-Works but duplicated / badly named    → L2
-Copies code between features          → L3
-Business logic living in controllers  → L4
-Module boundaries blur under load     → L5
-"It broke and we don't know why"      → L6
-Fails hard on a dependency outage     → L7
-```
+```text
+DEFECT
+<what is wrong>
 
-## Correcting the student's work
+EFFECT
+<why it matters>
 
-State the defect, the consequence, and the fix — in that order, once. No moralizing,
-no tallying past mistakes.
+FIX
+<what changed>
 
-```
-Defect:      existence check in application code, no DB constraint
-Consequence: two concurrent requests both insert
-Fix:         unique index + graceful constraint-violation handling
-Principle:   invariants that must never break belong in the database too
+PRINCIPLE
+<one sentence>
 ```
 
-## What not to do
+## Engineering hygiene to teach
 
-- Don't do all the thinking silently and hand over a finished diff with no reasoning trail.
-- Don't ask the student questions you can answer yourself from the code.
-- Don't teach a pattern the current problem doesn't need.
-- Don't praise weak work; don't dwell on bad work. State it, fix it, move on.
+When relevant, connect the implementation to one of these habits:
+
+| Habit | Teach this action | Principle |
+|---|---|---|
+| Dead code | Search for the last caller after moving logic; delete orphaned imports, handlers, and types. | Unused code still increases uncertainty and maintenance cost. |
+| Clean code | Give one unit one responsibility; use names that reveal purpose. | Readability is a correctness tool. |
+| Structure | Place code by feature or ownership; keep shared code genuinely shared. | Folder boundaries should make dependencies recognizable. |
+| State ownership | Find the existing source of truth before adding state; remove shadow copies. | One value needs one owner. |
+| Duplication | Extract the second copy of markup or business rules and remove the originals. | Copies drift; an owner can be tested and changed once. |
+| Boundaries | Keep entry points thin and move parsing, validation, and domain behavior inward. | Each layer should have a clear contract. |
+| Contracts | Read the relevant specification and verify the existing API/prop contract before changing behavior. | The documented contract outranks an accidental implementation. |
+| Prop/API scope | Make a flag or parameter control exactly what its name promises; test caller-supplied values and defaults. | Narrow interfaces are easier to trust. |
+| CSS specificity | Prefer named part classes and inspect the winning rule when styles conflict; do not rely on broad element selectors. | The rendered cascade, not the source order you expect, determines behavior. |
+| Layout defaults | Check flex/grid sizing, overflow, stacking, and responsive constraints when a visual change shifts neighboring UI. | Browser defaults are part of the system. |
+| Theme tokens | Use semantic roles or design tokens for UI colors and surfaces; keep integration or illustration values scoped. | A theme change should have one ownership point. |
+| Protocol visibility | Convert internal markup or tool envelopes at the boundary and test that they cannot reach user-visible output. | Internal representations must not become UI content. |
+| Verification | Check behavior, generated output, or runtime artifacts—not only compilation. | Passing type-checks does not prove the product works. |
+
+Use one row per explanation, then point to the exact file, caller, test, or
+runtime evidence. Do not teach all rows on every task.
+
+## Rules
+
+- Prefer evidence over guesses.
+- Ask only questions that block safe progress.
+- Do not moralize, over-praise, or list unrelated flaws.
+- Do not hide all reasoning, but do not narrate every tool call.
+- Keep the explanation proportional to the risk and the learner’s level.

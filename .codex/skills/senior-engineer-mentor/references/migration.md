@@ -21,12 +21,12 @@ deployment · reverse proxy · CI/CD · monitoring · tests · legacy integratio
 
 | Component | Current | Target | Action |
 |---|---|---|---|
-| PHP | 7.4 | 8.4 | UPGRADE |
-| Laravel | 8 | current LTS-supported | UPGRADE |
-| jQuery UI | legacy | React/Inertia | REPLACE |
-| PostgreSQL | existing | PostgreSQL | KEEP |
+| Runtime | unsupported version | supported version | UPGRADE |
+| Framework | legacy release | supported release | UPGRADE |
+| UI/client layer | legacy implementation | replacement implementation | REPLACE |
+| Database | existing engine | same engine | KEEP |
 | Business rules | in controllers | use cases/services | REFACTOR |
-| Dead API v0 | — | — | REMOVE |
+| Deprecated API | old contract | — | REMOVE |
 
 ## 3. Phased strategy (prefer incremental; big-bang needs justification)
 
@@ -73,3 +73,54 @@ request schema · response schema · status codes · error shape · pagination �
 sorting · rate limits · side effects · idempotency.
 
 Breaking an existing contract must be a decision, never an accident.
+
+## 8. Rollout and cutover
+
+Choose the rollout mechanism based on blast radius and reversibility:
+
+```
+shadow read · dark launch · feature flag · canary · percentage rollout
+dual read · dual write · expand/contract · blue/green · maintenance window
+```
+
+For every phase, define before implementation:
+
+- success signals and error budgets;
+- invariant checks and comparison queries;
+- who or what can stop the rollout;
+- the exact rollback or roll-forward command;
+- how in-flight jobs, sessions, caches, and queued messages are handled.
+
+Do not call a migration reversible merely because the old code still exists.
+Prove that data written by the new path can be read by the old path, or make
+the compatibility window and recovery procedure explicit.
+
+## 9. Data backfills and dual paths
+
+Treat schema changes, data backfills, application changes, and traffic changes
+as separate operations when they have different failure modes. Prefer an
+expand/contract sequence for live systems:
+
+```
+expand schema → deploy readers → backfill in bounded batches
+→ compare old/new representations → switch writers/readers
+→ monitor stability → contract old schema after the recovery window
+```
+
+Backfills must be restartable, bounded, observable, and safe to run twice.
+Record progress and validate both counts and business invariants; a row-count
+match alone does not prove semantic equivalence.
+
+## 10. Operational readiness
+
+Before cutover, verify more than code and tests:
+
+```
+backup restore · migration rehearsal · capacity · latency · error rates
+permissions · secrets · health checks · dashboards · alerts · runbook
+```
+
+Exercise the rollback path in an environment that resembles production. State
+the remaining risks, monitoring owner, recovery window, and cleanup date. Keep
+compatibility code and flags until evidence shows they are no longer needed;
+then remove them in a separate, reviewable change.

@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { BranchSchedule, Business, BranchScheduleKind, PlaceStatus } from "../domain/commerce-types";
+import type {
+  BranchSchedule,
+  Business,
+  BranchScheduleKind,
+  PlaceStatus,
+} from "../domain/commerce-types";
 import { commerceApi } from "../api/commerce-api";
 import { MapView } from "@/features/map/components/map-view";
 import { Icon } from "@/shared/ui/icon";
@@ -24,12 +29,23 @@ export function ShopLocationPanel({
   const [pickup, setPickup] = useState(branch?.pickup_enabled || false);
   const [delivery, setDelivery] = useState(branch?.delivery_enabled || false);
   const [placeName, setPlaceName] = useState(branch?.place__name || "");
-  const [placeAddress, setPlaceAddress] = useState(branch?.place__address || "");
-  const [latitude, setLatitude] = useState(String(branch?.place__latitude || ""));
-  const [longitude, setLongitude] = useState(String(branch?.place__longitude || ""));
-  const [placeStatus, setPlaceStatus] = useState<PlaceStatus>(branch?.place__status || "active");
-  const [schedules, setSchedules] = useState<BranchSchedule[]>(branch?.schedules || []);
-  const [scheduleKind, setScheduleKind] = useState<BranchScheduleKind>("closure");
+  const [placeAddress, setPlaceAddress] = useState(
+    branch?.place__address || "",
+  );
+  const [latitude, setLatitude] = useState(
+    String(branch?.place__latitude || ""),
+  );
+  const [longitude, setLongitude] = useState(
+    String(branch?.place__longitude || ""),
+  );
+  const [placeStatus, setPlaceStatus] = useState<PlaceStatus>(
+    branch?.place__status || "active",
+  );
+  const [schedules, setSchedules] = useState<BranchSchedule[]>(
+    branch?.schedules || [],
+  );
+  const [scheduleKind, setScheduleKind] =
+    useState<BranchScheduleKind>("closure");
   const [scheduleTitle, setScheduleTitle] = useState("");
   const [scheduleStart, setScheduleStart] = useState("");
   const [scheduleEnd, setScheduleEnd] = useState("");
@@ -55,7 +71,10 @@ export function ShopLocationPanel({
 
   useEffect(() => {
     if (!branch) return;
-    void commerceApi.listBranchSchedules(branch.id).then(setSchedules).catch(() => undefined);
+    void commerceApi
+      .listBranchSchedules(branch.id)
+      .then(setSchedules)
+      .catch(() => undefined);
   }, [branch?.id]);
 
   if (!branch) {
@@ -76,7 +95,10 @@ export function ShopLocationPanel({
     try {
       const parsedLatitude = Number(latitude);
       const parsedLongitude = Number(longitude);
-      if (!Number.isFinite(parsedLatitude) || !Number.isFinite(parsedLongitude)) {
+      if (
+        !Number.isFinite(parsedLatitude) ||
+        !Number.isFinite(parsedLongitude)
+      ) {
         throw new Error("Enter valid map coordinates");
       }
       await Promise.all([
@@ -126,7 +148,9 @@ export function ShopLocationPanel({
       setScheduleNotes("");
       toast.success("Closure schedule added");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not add schedule");
+      toast.error(
+        error instanceof Error ? error.message : "Could not add schedule",
+      );
     } finally {
       setScheduleSaving(false);
     }
@@ -135,10 +159,14 @@ export function ShopLocationPanel({
   const removeSchedule = async (scheduleId: number) => {
     try {
       await commerceApi.deleteBranchSchedule(scheduleId);
-      setSchedules((current) => current.filter((item) => item.id !== scheduleId));
+      setSchedules((current) =>
+        current.filter((item) => item.id !== scheduleId),
+      );
       toast.success("Schedule removed");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not remove schedule");
+      toast.error(
+        error instanceof Error ? error.message : "Could not remove schedule",
+      );
     }
   };
 
@@ -146,13 +174,17 @@ export function ShopLocationPanel({
     const date = new Date(value);
     if (end) date.setUTCDate(date.getUTCDate() - 1);
     return date.toLocaleDateString(undefined, {
-      year: "numeric", month: "short", day: "numeric",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   };
   const now = Date.now();
-  const currentSchedule = schedules.find((schedule) =>
-    schedule.is_closed && new Date(schedule.starts_at).getTime() <= now &&
-    new Date(schedule.ends_at).getTime() > now,
+  const currentSchedule = schedules.find(
+    (schedule) =>
+      schedule.is_closed &&
+      new Date(schedule.starts_at).getTime() <= now &&
+      new Date(schedule.ends_at).getTime() > now,
   );
   const operationalStatus =
     branch.active === false || placeStatus === "disabled"
@@ -193,7 +225,7 @@ export function ShopLocationPanel({
               id: `branch-${branch.id}`,
               latitude: branch.place__latitude,
               longitude: branch.place__longitude,
-              color: "#087f5b",
+              color: "var(--color-brand-primary)",
               label: branch.place__name,
             },
           ]}
@@ -207,7 +239,9 @@ export function ShopLocationPanel({
         </MapView>
         <LiquidCard className="shop-location-form rounded-[24px] p-4">
           <div className="mb-4 flex items-center gap-3">
-            <span className="shop-logo shop-logo-sm">🏪</span>
+            <span className="shop-logo shop-logo-sm">
+              <Icon name="box" />
+            </span>
             <span className="min-w-0">
               <strong className="block truncate text-sm">
                 {branch.place__name}
@@ -228,25 +262,50 @@ export function ShopLocationPanel({
           </label>
           <label className="shop-location-field">
             <span>Map place name</span>
-            <input className="admin-form-input" value={placeName} onChange={(event) => setPlaceName(event.target.value)} />
+            <input
+              className="admin-form-input"
+              value={placeName}
+              onChange={(event) => setPlaceName(event.target.value)}
+            />
           </label>
           <label className="shop-location-field">
             <span>Map address</span>
-            <input className="admin-form-input" value={placeAddress} onChange={(event) => setPlaceAddress(event.target.value)} placeholder="Street or area" />
+            <input
+              className="admin-form-input"
+              value={placeAddress}
+              onChange={(event) => setPlaceAddress(event.target.value)}
+              placeholder="Street or area"
+            />
           </label>
           <div className="shop-location-coordinate-fields">
             <label className="shop-location-field">
               <span>Latitude</span>
-              <input className="admin-form-input" inputMode="decimal" value={latitude} onChange={(event) => setLatitude(event.target.value)} />
+              <input
+                className="admin-form-input"
+                inputMode="decimal"
+                value={latitude}
+                onChange={(event) => setLatitude(event.target.value)}
+              />
             </label>
             <label className="shop-location-field">
               <span>Longitude</span>
-              <input className="admin-form-input" inputMode="decimal" value={longitude} onChange={(event) => setLongitude(event.target.value)} />
+              <input
+                className="admin-form-input"
+                inputMode="decimal"
+                value={longitude}
+                onChange={(event) => setLongitude(event.target.value)}
+              />
             </label>
           </div>
           <label className="shop-location-field">
             <span>Place visibility</span>
-            <select className="admin-form-input" value={placeStatus} onChange={(event) => setPlaceStatus(event.target.value as PlaceStatus)}>
+            <select
+              className="admin-form-input"
+              value={placeStatus}
+              onChange={(event) =>
+                setPlaceStatus(event.target.value as PlaceStatus)
+              }
+            >
               <option value="active">Active</option>
               <option value="temporarily_closed">Temporarily closed</option>
               <option value="permanently_closed">Permanently closed</option>
@@ -315,14 +374,30 @@ export function ShopLocationPanel({
           <div>
             <span className="kpi-label">Operational calendar</span>
             <h3>Closures and special days</h3>
-            <p>Schedule holidays, maintenance, fires, or temporary closures. These override regular hours.</p>
+            <p>
+              Schedule holidays, maintenance, fires, or temporary closures.
+              These override regular hours.
+            </p>
           </div>
-          <span className={`shop-location-availability shop-location-availability-${operationalStatus}`}>
-            {operationalStatus === "closed" ? "Closed now" : operationalStatus === "disabled" ? "Disabled" : "Open now"}
+          <span
+            className={`shop-location-availability shop-location-availability-${operationalStatus}`}
+          >
+            {operationalStatus === "closed"
+              ? "Closed now"
+              : operationalStatus === "disabled"
+                ? "Disabled"
+                : "Open now"}
           </span>
         </div>
         <div className="shop-location-schedule-form">
-          <select className="admin-form-input" value={scheduleKind} onChange={(event) => setScheduleKind(event.target.value as BranchScheduleKind)} aria-label="Schedule type">
+          <select
+            className="admin-form-input"
+            value={scheduleKind}
+            onChange={(event) =>
+              setScheduleKind(event.target.value as BranchScheduleKind)
+            }
+            aria-label="Schedule type"
+          >
             <option value="closure">Temporary closure</option>
             <option value="holiday">Holiday</option>
             <option value="fire">Fire or emergency</option>
@@ -330,25 +405,70 @@ export function ShopLocationPanel({
             <option value="event">Special event</option>
             <option value="other">Other</option>
           </select>
-          <input className="admin-form-input" value={scheduleTitle} onChange={(event) => setScheduleTitle(event.target.value)} placeholder="Reason or title" />
-          <input className="admin-form-input" type="date" value={scheduleStart} onChange={(event) => setScheduleStart(event.target.value)} aria-label="Start date" />
-          <input className="admin-form-input" type="date" value={scheduleEnd} onChange={(event) => setScheduleEnd(event.target.value)} aria-label="End date" />
-          <input className="admin-form-input" value={scheduleNotes} onChange={(event) => setScheduleNotes(event.target.value)} placeholder="Notes for customers (optional)" />
-          <button type="button" className="place-detail-add" disabled={scheduleSaving || !scheduleTitle.trim() || !scheduleStart || !scheduleEnd} onClick={() => void addSchedule()}>
+          <input
+            className="admin-form-input"
+            value={scheduleTitle}
+            onChange={(event) => setScheduleTitle(event.target.value)}
+            placeholder="Reason or title"
+          />
+          <input
+            className="admin-form-input"
+            type="date"
+            value={scheduleStart}
+            onChange={(event) => setScheduleStart(event.target.value)}
+            aria-label="Start date"
+          />
+          <input
+            className="admin-form-input"
+            type="date"
+            value={scheduleEnd}
+            onChange={(event) => setScheduleEnd(event.target.value)}
+            aria-label="End date"
+          />
+          <input
+            className="admin-form-input"
+            value={scheduleNotes}
+            onChange={(event) => setScheduleNotes(event.target.value)}
+            placeholder="Notes for customers (optional)"
+          />
+          <button
+            type="button"
+            className="place-detail-add"
+            disabled={
+              scheduleSaving ||
+              !scheduleTitle.trim() ||
+              !scheduleStart ||
+              !scheduleEnd
+            }
+            onClick={() => void addSchedule()}
+          >
             {scheduleSaving ? "Adding…" : "Add closure"}
           </button>
         </div>
         <div className="shop-location-schedule-list">
-          {schedules.length === 0 ? <p className="place-detail-empty">No upcoming closure schedules.</p> : schedules.map((schedule) => (
-            <div className="shop-location-schedule-row" key={schedule.id}>
-              <div>
-                <strong>{schedule.title}</strong>
-                <span>{schedule.kind} · {scheduleDate(schedule.starts_at)} – {scheduleDate(schedule.ends_at, true)}</span>
-                {schedule.notes && <small>{schedule.notes}</small>}
+          {schedules.length === 0 ? (
+            <p className="place-detail-empty">No upcoming closure schedules.</p>
+          ) : (
+            schedules.map((schedule) => (
+              <div className="shop-location-schedule-row" key={schedule.id}>
+                <div>
+                  <strong>{schedule.title}</strong>
+                  <span>
+                    {schedule.kind} · {scheduleDate(schedule.starts_at)} –{" "}
+                    {scheduleDate(schedule.ends_at, true)}
+                  </span>
+                  {schedule.notes && <small>{schedule.notes}</small>}
+                </div>
+                <button
+                  type="button"
+                  className="shop-location-schedule-remove"
+                  onClick={() => void removeSchedule(schedule.id)}
+                >
+                  Remove
+                </button>
               </div>
-              <button type="button" className="shop-location-schedule-remove" onClick={() => void removeSchedule(schedule.id)}>Remove</button>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </LiquidCard>
     </section>

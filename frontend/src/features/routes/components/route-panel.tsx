@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { IconType } from "react-icons";
+import {
+  FaBicycle,
+  FaCar,
+  FaMotorcycle,
+  FaRoute,
+  FaWalking,
+} from "react-icons/fa";
+import { FiSend } from "react-icons/fi";
 import { useDragControls, type PanInfo } from "framer-motion";
 import { placeName, type MapLanguage } from "@/features/i18n/language";
 import { PlaceResults } from "@/features/search/components/place-results";
@@ -13,25 +22,23 @@ import {
   LiquidSwitch,
 } from "@/shared/ui/liquid";
 import { PinLocation } from "@/shared/ui/pin";
-import { MotorbikeIcon } from "@/shared/ui/motorbike-icon";
-import { CombinedModeIcon } from "@/shared/ui/combined-mode-icon";
 import { useLocalStore } from "@/shared/hooks/use-local-store";
 import { useWindowSession } from "@/shared/hooks/use-window-session";
-import { BikeIcon, CarIcon, WalkIcon } from "@/shared/ui/vehicle-icons";
 import type { Coordinate, Place, TravelMode } from "../domain/types";
 import { DirectionsDetail } from "./directions-detail";
 import { useRouteCalculation } from "../hooks/use-route-calculation";
 import { useRouteStore } from "../store/route-store";
+import { useI18n } from "@/features/i18n/use-i18n";
 
 const modes: TravelMode[] = ["car", "motorbike", "combined", "bike", "walk"];
 const isTravelMode = (value: unknown): value is TravelMode =>
   typeof value === "string" && modes.includes(value as TravelMode);
-const modeIcons = {
-  car: CarIcon,
-  motorbike: MotorbikeIcon,
-  combined: CombinedModeIcon,
-  bike: BikeIcon,
-  walk: WalkIcon,
+const modeIcons: Record<TravelMode, IconType> = {
+  car: FaCar,
+  motorbike: FaMotorcycle,
+  combined: FaRoute,
+  bike: FaBicycle,
+  walk: FaWalking,
 };
 const modeLabels: Record<TravelMode, string> = {
   car: "Car",
@@ -70,6 +77,12 @@ export function RoutePanel({
   useEffect(() => {
     if (windowSessionReady && !windowSession.open) setWindowOpen(true);
   }, [setWindowOpen, windowSession.open, windowSessionReady]);
+  useEffect(() => {
+    const openPlanner = () => setExpanded(true);
+    window.addEventListener("smartroute:open-route-planner", openPlanner);
+    return () =>
+      window.removeEventListener("smartroute:open-route-planner", openPlanner);
+  }, []);
   const points = useRouteStore((s) => s.points),
     coordinates = useRouteStore((s) => s.coordinates),
     activePoint = useRouteStore((s) => s.activePoint),
@@ -89,6 +102,8 @@ export function RoutePanel({
     "combined",
     isTravelMode,
   );
+  const t = useI18n();
+  const routeStops = points.filter((point): point is Place => Boolean(point));
 
   useEffect(() => setMode(savedMode), [savedMode, setMode]);
 
@@ -241,17 +256,17 @@ export function RoutePanel({
             readOnly={expanded}
           />
           <button
-            className="grid h-9 w-9 place-items-center rounded-full text-slate-600"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-slate-600"
             aria-label="Search"
           >
             <Icon name="search" className="h-5 w-5" />
           </button>
           <button
             onClick={() => setExpanded(true)}
-            className="ml-1 grid h-9 w-9 place-items-center rounded-full bg-emerald-700 text-white"
+            className="ml-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-700 text-white"
             aria-label="Directions"
           >
-            <Icon name="directions" className="h-[22px] w-[22px]" />
+            <FiSend aria-hidden="true" className="h-[18px] w-[18px]" />
           </button>
         </LiquidCard>
         {!expanded && focused === 1 && (
@@ -285,6 +300,7 @@ export function RoutePanel({
           open={expanded}
           onClose={() => setExpanded(false)}
           ariaLabel="Route planner"
+          initialSnap="peek"
           className="route-planner-card mt-3 max-h-[calc(100dvh-92px)] overflow-auto rounded-[28px]"
           drag={true}
           dragListener={false}
@@ -379,12 +395,12 @@ export function RoutePanel({
                           size={24}
                           color={
                             index === 0
-                              ? "#047857"
+                              ? "var(--color-brand-primary)"
                               : last
-                                ? "#ef4444"
-                                : "#6366f1"
+                                ? "var(--color-status-danger)"
+                                : "var(--color-status-info)"
                           }
-                          className="absolute -left-[35px] top-[14px] z-10 drop-shadow-[0_2px_2px_rgba(15,23,42,.25)]"
+                          className="route-point-marker absolute -left-[35px] top-[14px] z-10"
                         />
                         <label
                           onClick={() => focus(index)}
@@ -491,24 +507,44 @@ export function RoutePanel({
                 {routes[selectedRoute] && (
                   <button
                     onClick={() => setShowDetails(true)}
-                    className="mt-3 flex w-full items-center rounded-xl border-l-4 border-emerald-700 bg-emerald-50 p-3 text-left transition-colors hover:bg-emerald-100"
+                    className="route-summary-card mt-3 w-full text-left"
                   >
-                    <span className="flex-1">
-                      <strong className="text-lg text-emerald-800">
-                        {Math.max(
-                          1,
-                          Math.round(routes[selectedRoute].duration / 60),
-                        )}{" "}
-                        min
-                      </strong>
-                      <span className="ml-2 text-xs text-slate-500">
-                        {(routes[selectedRoute].length / 1000).toFixed(1)} km
+                    <span className="route-summary-header">
+                      <span>
+                        <small>{t("routes.travelTime", "Travel time")}</small>
+                        <strong>
+                          {Math.max(
+                            1,
+                            Math.round(routes[selectedRoute].duration / 60),
+                          )}{" "}
+                          {t("routes.minutes", "min")}
+                        </strong>
                       </span>
-                      <span className="mt-1 block text-[10px] text-slate-500">
-                        View turn-by-turn directions
+                      <span>
+                        <small>{t("routes.distance", "Distance")}</small>
+                        <strong>
+                          {(routes[selectedRoute].length / 1000).toFixed(1)} km
+                        </strong>
+                      </span>
+                      <Icon
+                        name="chevron-right"
+                        className="route-summary-chevron"
+                      />
+                    </span>
+                    <span className="route-summary-stops">
+                      {routeStops.slice(0, 2).map((stop, index) => (
+                        <span key={`${stop.name}-${index}`}>
+                          <i className={index === 0 ? "start" : "end"} />
+                          <strong>{stop.name}</strong>
+                        </span>
+                      ))}
+                    </span>
+                    <span className="route-summary-footer">
+                      <span>{modeLabels[mode]}</span>
+                      <span>
+                        {t("routes.viewDirections", "View directions")}
                       </span>
                     </span>
-                    <span className="text-xl text-emerald-700">›</span>
                   </button>
                 )}
               </div>

@@ -94,7 +94,7 @@ with this email already exists" rather than a generic string.
 | `api/auth.py` (routes + validation + logic + error mapping) | split three ways ↓ |
 | — | `app/http/requests/auth_requests.py` (`SignupRequest`, `LoginRequest`, `UserResource`) |
 | — | `app/http/controllers/auth_controller.py` (`AuthController`) |
-| `services/user_store.py` (`UserStore`) | `app/services/user_service.py` (`UserService(BaseService[User])`) |
+| `services/user_store.py` (`UserStore`) | `app/services/auth/user_service.py` (`UserService(BaseService[User])`) |
 | `main.py` `include_router` calls | `app/routes/api.py` `register_routes(app)` |
 
 `api/auth.py` and `services/user_store.py` are **deleted**, not shimmed —
@@ -134,10 +134,10 @@ during this reorganisation and is easy to reintroduce.
 | --- | --- |
 | `app/http/requests/commerce_requests.py` | the 10 Pydantic schemas |
 | `app/http/controllers/commerce_controller.py` | all 16 endpoints' logic |
-| `app/services/business_service.py` | businesses, branches, storefronts |
-| `app/services/product_service.py` | products, variants, spreadsheet import |
-| `app/services/inventory_service.py` | per-branch stock |
-| `app/services/exchange_rate_service.py` | NBC currency rates |
+| `app/services/commerce/business_service.py` | businesses, branches, storefronts |
+| `app/services/commerce/product_service.py` | products, variants, spreadsheet import |
+| `app/services/commerce/inventory_service.py` | per-branch stock |
+| `app/services/commerce/exchange_rate_service.py` | NBC currency rates |
 
 Its private `store()` and `_error()` helpers are gone, replaced by
 `BaseController.state()` and `ResponseMixin.error()`.
@@ -171,14 +171,17 @@ disagreed with the contents:
 | --- | --- | --- |
 | `services/route_finder.py` | `app/routing/router_engine.py` | held `RouterEngine` |
 | `services/place_cache.py` | `app/support/tile_cache.py` | held `TileCache` |
-| `services/map_store.py` (`MapStore`) | `app/services/map_service.py` (`MapService`) | it is a domain service |
+| `services/map_store.py` (`MapStore`) | `app/services/map/map_service.py` (`MapService`) | it is a domain service |
 | `services/auth.py` | `app/support/security.py` | crypto primitives, not a service; `auth` collided with the auth controller/routes |
 | `services/database_overlays.py` | `app/routing/overlays.py` | routing-engine internal |
 | `services/{graphhopper,nbc_exchange,osm_places}.py`, `libs/overpass.py` | `app/clients/` | external I/O |
 | `services/{google_maps,product_import}.py`, `libs/{translation,cambodia}.py` | `app/support/` | pure helpers |
 | `services/settings.py`, `database/config.py` | `config/` | configuration |
 
-The rule: `app/services/` is for domain services extending `BaseService`;
+The rule: `app/services/` is for domain services extending `BaseService`,
+grouped by feature when a domain has more than one service (`auth/`,
+`commerce/`, `map/`, and `assistant/`); shared `BaseService` remains at the
+services root;
 `app/clients/` performs external I/O; `app/routing/` is engine internals;
 `app/support/` is pure functions with no domain or request knowledge. The
 old `libs/` package is gone.

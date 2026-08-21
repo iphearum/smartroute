@@ -3,12 +3,12 @@ from datetime import date
 from decimal import Decimal
 
 from services.map_models import MapRecord, Place
-from app.services.business_service import BusinessService
+from app.services.commerce.business_service import BusinessService
 from app.models.exchange_rate import ExchangeRate
-from app.services.exchange_rate_service import ExchangeRateService
-from app.services.inventory_service import InventoryService
-from app.services.product_service import ProductService
-from app.services.map_service import MapService
+from app.services.commerce.exchange_rate_service import ExchangeRateService
+from app.services.commerce.inventory_service import InventoryService
+from app.services.commerce.product_service import ProductService
+from app.services.map.map_service import MapService
 from app.clients.nbc_exchange import NbcRate
 from app.support.product_import import ImportRow
 

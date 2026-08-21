@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouteStore } from "@/features/routes/store/route-store";
 import { MapControlButton } from "@/shared/ui/map-controls";
+import { FiCompass, FiMaximize, FiNavigation } from "react-icons/fi";
 import { MapLayerSettings } from "./map-layer-settings";
 import { ProfileMenu } from "@/features/auth/components/profile-menu";
+import { useI18n } from "@/features/i18n/use-i18n";
 
 function dispatchMapEvent(name: string, detail?: unknown) {
   window.dispatchEvent(new CustomEvent(name, { detail }));
@@ -20,12 +22,19 @@ function useClientReady() {
   );
 }
 
-export function MapActionControls() {
+export function MapActionControls({
+  assistantOpen = false,
+  assistantWidth = 400,
+}: {
+  assistantOpen?: boolean;
+  assistantWidth?: number;
+}) {
   const locationRequestRunning = useRef(false);
   const [locationStatus, setLocationStatus] = useState<string | null>(null),
     [locating, setLocating] = useState(false),
     hasRoute = useRouteStore((state) => state.routes.length > 0),
     clientReady = useClientReady();
+  const t = useI18n();
 
   useEffect(() => {
     const showError = (event: Event) =>
@@ -79,38 +88,56 @@ export function MapActionControls() {
     );
   };
 
+  useEffect(() => {
+    const requestLocation = () => locate();
+    window.addEventListener(
+      "smartroute:request-current-location",
+      requestLocation,
+    );
+    return () =>
+      window.removeEventListener(
+        "smartroute:request-current-location",
+        requestLocation,
+      );
+  }, []);
+
   return (
-    <div className="right-pannel-control absolute flex flex-col gap-2">
+    <div
+      className="right-pannel-control absolute flex flex-col gap-2 transition-[right] duration-300"
+      style={{
+        right: assistantOpen
+          ? `min(${assistantWidth + 18}px, 100vw)`
+          : undefined,
+      }}
+    >
       <ProfileMenu />
       <div className="relative">
         <MapLayerSettings>
           <MapControlButton
             onClick={locate}
-            aria-label={locating ? "Finding my location" : "Go to my location"}
+            aria-label={
+              locating
+                ? t("map.actions.findingLocation", "Finding my location")
+                : t("map.actions.goToLocation", "Go to my location")
+            }
             aria-busy={locating}
             disabled={locating}
             className={locating ? "is-locating" : undefined}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m5 11 14-6-6 14-2.3-5.7L5 11Z" />
-            </svg>
+            <FiNavigation aria-hidden="true" />
           </MapControlButton>
           <MapControlButton
             onClick={() => dispatchMapEvent("smartroute:focus-selected-route")}
-            aria-label="Focus selected route"
+            aria-label={t("map.actions.focusRoute", "Focus selected route")}
             disabled={!clientReady || !hasRoute}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M9 4H4v5M15 4h5v5M9 20H4v-5m11 5h5v-5" />
-            </svg>
+            <FiMaximize aria-hidden="true" />
           </MapControlButton>
           <MapControlButton
             onClick={() => dispatchMapEvent("smartroute:reset-map-view")}
-            aria-label="Reset map view north"
+            aria-label={t("map.actions.resetNorth", "Reset map view north")}
           >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5L12 2Z" />
-          </svg>
+            <FiCompass aria-hidden="true" />
           </MapControlButton>
         </MapLayerSettings>
         {locationStatus && (

@@ -18,8 +18,8 @@ import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.services.exchange_rate_service import ExchangeRateService
-from app.services.map_service import MapService
+from app.services.commerce.exchange_rate_service import ExchangeRateService
+from app.services.map.map_service import MapService
 from app.clients.nbc_exchange import NbcExchangeRateError, fetch_nbc_rates
 from config.settings import settings
 

@@ -16,32 +16,43 @@ import { MapCanvas } from "./map-canvas";
 import { MapActionControls } from "./map-action-controls";
 import { ShopPlatformPanel } from "@/features/shops/components/shop-platform-panel";
 import { AiMapAssistant } from "@/features/assistant/components/ai-map-assistant";
+import { useI18n } from "@/features/i18n/use-i18n";
+import { useRouteStore } from "@/features/routes/store/route-store";
+import { MapToolsMenu } from "./map-tools-menu";
 
-const railItems: { icon: IconName; label: AppNavSection }[] = [
-  { icon: "home", label: "Explore" },
-  { icon: "locate", label: "Locate" },
-  { icon: "database", label: "Place data" },
-  { icon: "bookmark", label: "Node IDs" },
+const railItems: { icon: IconName; label: AppNavSection; key: string }[] = [
+  { icon: "home", label: "Explore", key: "map.explore" },
+  { icon: "locate", label: "Locate", key: "map.locate" },
+  { icon: "database", label: "Place data", key: "map.placeData" },
+  { icon: "directions", label: "Directions", key: "map.directions" },
+  { icon: "menu", label: "Map tools", key: "map.tools.title" },
 ];
 const triggerFlavors = ["flame", "frost", "aurora", "verdant"] as const;
 const categories = [
-  { key: "cafe", label: "☕ Cafés" },
-  { key: "food", label: "🍜 Restaurants" },
-  { key: "hotel", label: "🏨 Hotels" },
-  { key: "fuel", label: "⛽ Fuel" },
-  { key: "medical", label: "🏥 Hospitals" },
-  { key: "shopping", label: "🛍 Markets" },
+  { key: "cafe", translationKey: "map.categories.cafe" },
+  { key: "food", translationKey: "map.categories.food" },
+  { key: "hotel", translationKey: "map.categories.hotel" },
+  { key: "fuel", translationKey: "map.categories.fuel" },
+  { key: "medical", translationKey: "map.categories.medical" },
+  { key: "shopping", translationKey: "map.categories.shopping" },
 ];
 
 export function MapWorkspace() {
   const workspaceRef = useRef<HTMLElement>(null),
     triggerZoneRef = useRef<HTMLDivElement>(null),
     suppressShopClick = useRef(false),
-    [triggerPosition, setTriggerPosition] = usePersistentWindowPosition("shop-platform-trigger"),
-    [triggerFlavor, setTriggerFlavor] = useState<(typeof triggerFlavors)[number]>("flame");
+    [triggerPosition, setTriggerPosition] = usePersistentWindowPosition(
+      "shop-platform-trigger",
+    ),
+    [triggerFlavor, setTriggerFlavor] =
+      useState<(typeof triggerFlavors)[number]>("flame"),
+    [assistantOpen, setAssistantOpen] = useState(false),
+    [assistantWidth, setAssistantWidth] = useState(400);
   // pick the pill's mood on the client so server and first client render agree
   useEffect(() => {
-    setTriggerFlavor(triggerFlavors[Math.floor(Math.random() * triggerFlavors.length)]);
+    setTriggerFlavor(
+      triggerFlavors[Math.floor(Math.random() * triggerFlavors.length)],
+    );
   }, []);
   useEffect(() => {
     const clampTrigger = () => {
@@ -50,7 +61,10 @@ export function MapWorkspace() {
       if (!zone || !button) return;
       const zoneRect = zone.getBoundingClientRect(),
         maxX = -(zoneRect.width - button.getBoundingClientRect().width),
-        maxY = Math.max(0, zoneRect.height - button.getBoundingClientRect().height),
+        maxY = Math.max(
+          0,
+          zoneRect.height - button.getBoundingClientRect().height,
+        ),
         x = Math.max(maxX, Math.min(0, triggerPosition.x)),
         y = Math.max(0, Math.min(maxY, triggerPosition.y));
       if (x !== triggerPosition.x || y !== triggerPosition.y)
@@ -71,22 +85,34 @@ export function MapWorkspace() {
     setActiveNav = useAppShell((state) => state.setActiveNav),
     language = useAppShell((state) => state.language),
     mapLayers = useAppShell((state) => state.mapLayers),
-    openPlaceData = useAppShell((state) => state.openPlaceData);
+    openPlaceData = useAppShell((state) => state.openPlaceData),
+    routes = useRouteStore((state) => state.routes),
+    points = useRouteStore((state) => state.points);
+  const [mapToolsOpen, setMapToolsOpen] = useState(false);
+  const t = useI18n();
   return (
     <main
       ref={workspaceRef}
-      className={`map-workspace fixed inset-0 overflow-hidden ${sidebarCollapsed ? "" : "has-bottom-nav"}`}
+      className={`map-workspace fixed inset-0 overflow-hidden ${sidebarCollapsed ? "" : "has-bottom-nav"} ${assistantOpen ? "assistant-open" : ""}`}
+      style={
+        { "--assistant-width": `${assistantWidth}px` } as React.CSSProperties
+      }
       lang={language}
     >
       <MapCanvas
         poiFilters={poiFilters}
         language={language}
         layerVisibility={mapLayers}
+        assistantOpen={assistantOpen}
+        assistantWidth={assistantWidth}
       />
-      <MapActionControls />
+      <MapActionControls
+        assistantOpen={assistantOpen}
+        assistantWidth={assistantWidth}
+      />
       <nav
-        className={`desktop-rail liquid-card liquid-dock absolute z-[800] ${sidebarCollapsed ? "dock-hidden" : ""}`}
-        aria-label="Primary navigation"
+        className={`desktop-rail map-primary-nav liquid-card liquid-dock absolute z-[1200] ${sidebarCollapsed ? "dock-hidden" : ""}`}
+        aria-label={t("map.primaryNavigation", "Primary navigation")}
         aria-hidden={sidebarCollapsed}
       >
         <LiquidSwitch
@@ -94,15 +120,40 @@ export function MapWorkspace() {
           value={activeNav}
           onChange={(value) => {
             setActiveNav(value);
+            if (value === "Locate")
+              window.dispatchEvent(
+                new CustomEvent("smartroute:request-current-location"),
+              );
             if (value === "Place data") openPlaceData();
+            if (value === "Directions")
+              window.dispatchEvent(
+                new CustomEvent("smartroute:open-route-planner"),
+              );
+            setMapToolsOpen(value === "Map tools");
           }}
           items={railItems.map((item) => ({
             value: item.label,
-            label: item.label,
+            label: t(item.key, item.label),
             icon: <Icon name={item.icon} />,
           }))}
         />
       </nav>
+      {mapToolsOpen && (
+        <MapToolsMenu
+          hasRoute={routes.length > 0}
+          hasPoints={points.length > 0}
+          onAction={(tool) => {
+            const events = {
+              clear: "smartroute:clear-route-points",
+              focus: "smartroute:focus-selected-route",
+              reset: "smartroute:reset-map-view",
+            } as const;
+            window.dispatchEvent(new CustomEvent(events[tool]));
+            setMapToolsOpen(false);
+            setActiveNav("Explore");
+          }}
+        />
+      )}
       <RoutePanel
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={toggleSidebar}
@@ -111,7 +162,7 @@ export function MapWorkspace() {
       <header className="workspace-command-bar absolute z-[650]">
         <div
           className="category-strip-next ml-[-10px] pl-[10px] items-center h-[56px] transition-all duration-300 rounded-full flex min-w-0 gap-2 overflow-x-auto [scrollbar-width:none]"
-          aria-label="Filter places"
+          aria-label={t("map.filterPlaces", "Filter places")}
         >
           {categories.map((category) => {
             const active = poiFilters.includes(category.key);
@@ -122,13 +173,16 @@ export function MapWorkspace() {
                 aria-pressed={active}
                 className={`liquid-chip h-[34px] shrink-0 rounded-full px-4 text-xs font-bold transition-all ${active ? "active text-emerald-800" : "text-slate-700 hover:text-emerald-800"}`}
               >
-                {category.label}
+                {t(category.translationKey, category.key)}
               </button>
             );
           })}
         </div>
       </header>
-      <div ref={triggerZoneRef} className="shop-platform-trigger-zone absolute z-[700] pointer-events-none">
+      <div
+        ref={triggerZoneRef}
+        className="shop-platform-trigger-zone absolute z-[700] pointer-events-none"
+      >
         <motion.button
           type="button"
           className="shop-platform-trigger liquid-pill"
@@ -145,13 +199,18 @@ export function MapWorkspace() {
           }}
           onDragEnd={() => {
             const zone = triggerZoneRef.current,
-              button = triggerZoneRef.current?.querySelector(".shop-platform-trigger");
+              button = triggerZoneRef.current?.querySelector(
+                ".shop-platform-trigger",
+              );
             if (zone && button) {
               const zoneRect = zone.getBoundingClientRect(),
                 buttonRect = button.getBoundingClientRect();
               setTriggerPosition({
                 version: 1,
-                x: buttonRect.left - zoneRect.left - (zoneRect.width - buttonRect.width),
+                x:
+                  buttonRect.left -
+                  zoneRect.left -
+                  (zoneRect.width - buttonRect.width),
                 y: buttonRect.top - zoneRect.top,
               });
             }
@@ -166,19 +225,31 @@ export function MapWorkspace() {
               return;
             }
             const rect = event.currentTarget.getBoundingClientRect();
-            window.dispatchEvent(new CustomEvent("smartroute:open-shop-platform", {
-              detail: { anchor: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } },
-            }));
+            window.dispatchEvent(
+              new CustomEvent("smartroute:open-shop-platform", {
+                detail: {
+                  anchor: {
+                    left: rect.left,
+                    top: rect.top,
+                    width: rect.width,
+                    height: rect.height,
+                  },
+                },
+              }),
+            );
           }}
         >
           <Icon name="box" className="h-4 w-4" />
-          <span>Shops</span>
         </motion.button>
       </div>
       <PoiLoader />
       <PlaceDetailPanel />
       <ShopPlatformPanel />
-      <AiMapAssistant />
+      <AiMapAssistant
+        onOpenChange={setAssistantOpen}
+        asideWidth={assistantWidth}
+        onAsideWidthChange={setAssistantWidth}
+      />
       <div
         id="map-data-loading"
         className="liquid-pill pointer-events-none absolute bottom-28 left-1/2 z-[650] hidden -translate-x-1/2 items-center gap-2 px-4 py-2 text-[11px] font-bold text-emerald-800"

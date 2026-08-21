@@ -3,8 +3,11 @@
 import {
   forwardRef,
   useEffect,
+  useRef,
   useState,
   type HTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type Ref,
   type ReactNode,
 } from "react";
 import {
@@ -18,19 +21,27 @@ import {
 const join = (...values: Array<string | false | null | undefined>) =>
   values.filter(Boolean).join(" ");
 
-type LiquidCardVariant = "surface" | "popover" | "pill";
+type LiquidCardVariant = "surface" | "popover" | "pill" | "nested";
 
 export const LiquidCard = forwardRef<
-  HTMLDivElement,
-  HTMLAttributes<HTMLDivElement> & { variant?: LiquidCardVariant }
->(function LiquidCard({ variant = "surface", className, ...props }, ref) {
+  HTMLElement,
+  HTMLAttributes<HTMLElement> & {
+    variant?: LiquidCardVariant;
+    as?: "div" | "aside";
+  }
+>(function LiquidCard(
+  { variant = "surface", as = "div", className, ...props },
+  ref,
+) {
+  const Element = as;
   return (
-    <div
-      ref={ref}
+    <Element
+      ref={ref as Ref<HTMLDivElement>}
       className={join(
         "liquid-card",
         variant === "popover" && "liquid-popover",
         variant === "pill" && "liquid-pill",
+        variant === "nested" && "liquid-nested",
         className,
       )}
       {...props}
@@ -57,13 +68,38 @@ export function LiquidSwitch<Value extends string>({
   ariaLabel: string;
   className?: string;
 }) {
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const focusItem = (index: number) => {
+    const nextIndex = (index + items.length) % items.length;
+    itemRefs.current[nextIndex]?.focus();
+    onChange(items[nextIndex].value);
+  };
+  const handleKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      event.preventDefault();
+      focusItem(index + 1);
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      event.preventDefault();
+      focusItem(index - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      focusItem(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      focusItem(items.length - 1);
+    }
+  };
   return (
     <div
       className={join("liquid-switch", className)}
       role="tablist"
       aria-label={ariaLabel}
+      aria-orientation="horizontal"
     >
-      {items.map((item) => {
+      {items.map((item, index) => {
         const active = value === item.value;
         return (
           <button
@@ -71,6 +107,11 @@ export function LiquidSwitch<Value extends string>({
             type="button"
             role="tab"
             aria-selected={active}
+            tabIndex={active ? 0 : -1}
+            ref={(element) => {
+              itemRefs.current[index] = element;
+            }}
+            onKeyDown={(event) => handleKeyDown(event, index)}
             onClick={() => onChange(item.value)}
             className={join("liquid-switch-item", active && "active")}
           >
@@ -85,7 +126,7 @@ export function LiquidSwitch<Value extends string>({
   );
 }
 
-type SheetSnap = "half" | "full";
+type SheetSnap = "peek" | "half" | "full";
 
 export function DraggableLiquidSheet({
   open,
@@ -93,6 +134,7 @@ export function DraggableLiquidSheet({
   children,
   className,
   ariaLabel = "Details",
+  initialSnap = "half",
   drag,
   dragListener,
   sheetDragControls,
@@ -107,6 +149,7 @@ export function DraggableLiquidSheet({
   children: ReactNode;
   className?: string;
   ariaLabel?: string;
+  initialSnap?: SheetSnap;
   drag?: boolean | "x" | "y";
   dragListener?: boolean;
   sheetDragControls?: ReturnType<typeof useDragControls>;
@@ -116,15 +159,15 @@ export function DraggableLiquidSheet({
   onDragEnd?: React.ComponentProps<typeof motion.div>["onDragEnd"];
   style?: React.ComponentProps<typeof motion.div>["style"];
 }) {
-  const [snap, setSnap] = useState<SheetSnap>("half"),
+  const [snap, setSnap] = useState<SheetSnap>(initialSnap),
     [mobile, setMobile] = useState(false),
     [viewportHeight, setViewportHeight] = useState(800),
     dragControls = useDragControls(),
     reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    if (open) setSnap("half");
-  }, [open]);
+    if (open) setSnap(initialSnap);
+  }, [initialSnap, open]);
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 820px)"),
@@ -150,15 +193,24 @@ export function DraggableLiquidSheet({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose, open]);
 
-  const halfOffset = viewportHeight * 0.36,
+  // The mobile sheet has three deliberate resting positions: a peek for
+  // context, a half-open editing state, and a full directions state.
+  const snapOffset =
+      snap === "peek"
+        ? viewportHeight * 0.42
+        : snap === "half"
+          ? viewportHeight * 0.18
+          : 0,
     finishDrag = (
       _event: MouseEvent | TouchEvent | PointerEvent,
       info: PanInfo,
     ) => {
-      const finalOffset = (snap === "full" ? 0 : halfOffset) + info.offset.y;
+      const finalOffset = snapOffset + info.offset.y;
       if (finalOffset > viewportHeight * 0.68 || info.velocity.y > 900)
         onClose();
-      else setSnap(finalOffset < viewportHeight * 0.2 ? "full" : "half");
+      else if (finalOffset < viewportHeight * 0.08) setSnap("full");
+      else if (finalOffset < viewportHeight * 0.3) setSnap("half");
+      else setSnap("peek");
     },
     transition = reducedMotion
       ? { duration: 0.01 }
@@ -186,7 +238,7 @@ export function DraggableLiquidSheet({
             initial={{ opacity: 0, y: mobile ? viewportHeight : -14 }}
             animate={{
               opacity: 1,
-              y: mobile && snap === "half" ? halfOffset : 0,
+              y: mobile ? snapOffset : 0,
             }}
             exit={{ opacity: 0, y: mobile ? viewportHeight : -14 }}
             transition={transition}
@@ -196,18 +248,21 @@ export function DraggableLiquidSheet({
             dragConstraints={
               mobile
                 ? {
-                    top: snap === "half" ? -halfOffset : 0,
+                    top: snap === "full" ? 0 : -snapOffset,
                     bottom: viewportHeight * 0.4,
                   }
                 : (dragConstraints ?? {
-                top: snap === "half" ? -halfOffset : 0,
-                bottom: viewportHeight * 0.4,
+                    top: snap === "full" ? 0 : -snapOffset,
+                    bottom: viewportHeight * 0.4,
                   })
             }
             dragElastic={dragElastic ?? 0.06}
             dragMomentum={dragMomentum ?? false}
             onDragEnd={mobile ? finishDrag : (onDragEnd ?? finishDrag)}
-            style={style}
+            // Desktop window offsets are persisted in the session store. They
+            // must not leak into the fixed mobile sheet, where they can move a
+            // previously dragged desktop panel below the usable viewport.
+            style={mobile ? undefined : style}
             role="dialog"
             aria-modal="true"
             aria-label={ariaLabel}
@@ -216,13 +271,33 @@ export function DraggableLiquidSheet({
               className="draggable-liquid-handle"
               role="button"
               tabIndex={0}
-              aria-label={`${snap === "full" ? "Collapse" : "Expand"} ${ariaLabel.toLowerCase()}`}
+              aria-label={`${snap === "full" ? "Collapse" : snap === "half" ? "Expand" : "Open"} ${ariaLabel.toLowerCase()}`}
               onPointerDown={(event) => mobile && dragControls.start(event)}
               onKeyDown={(event) => {
-                if (event.key === "ArrowUp") setSnap("full");
-                if (event.key === "ArrowDown") setSnap("half");
+                if (event.key === "ArrowUp")
+                  setSnap((current) =>
+                    current === "peek"
+                      ? "half"
+                      : current === "half"
+                        ? "full"
+                        : "full",
+                  );
+                if (event.key === "ArrowDown")
+                  setSnap((current) =>
+                    current === "full"
+                      ? "half"
+                      : current === "half"
+                        ? "peek"
+                        : "peek",
+                  );
                 if (event.key === "Enter" || event.key === " ")
-                  setSnap((current) => (current === "full" ? "half" : "full"));
+                  setSnap((current) =>
+                    current === "peek"
+                      ? "half"
+                      : current === "half"
+                        ? "full"
+                        : "peek",
+                  );
               }}
             >
               <span />

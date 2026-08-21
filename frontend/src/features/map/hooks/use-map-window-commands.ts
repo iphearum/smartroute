@@ -22,10 +22,7 @@ export function useMapWindowCommands(
     const detail = (
       event as CustomEvent<{ latitude: number; longitude: number }>
     ).detail;
-    if (
-      Number.isFinite(detail?.latitude) &&
-      Number.isFinite(detail?.longitude)
-    )
+    if (Number.isFinite(detail?.latitude) && Number.isFinite(detail?.longitude))
       map.current?.flyTo({
         center: [detail.longitude, detail.latitude],
         zoom: 16,
@@ -58,8 +55,7 @@ export function useMapWindowCommands(
       ring: [number, number][] = [];
     if (accuracy > 0) {
       const latRadius = accuracy / 111_320,
-        lonRadius =
-          accuracy / (111_320 * Math.cos((latitude * Math.PI) / 180));
+        lonRadius = accuracy / (111_320 * Math.cos((latitude * Math.PI) / 180));
       for (let index = 0; index <= 48; index++) {
         const angle = (index / 48) * Math.PI * 2;
         ring.push([
@@ -112,6 +108,11 @@ export function useMapWindowCommands(
       duration: 600,
     }),
   );
+
+  useWindowEvent("smartroute:clear-route-points", () => {
+    const state = useRouteStore.getState();
+    state.points.forEach((_, index) => state.clearPoint(index));
+  });
 
   useWindowEvent("smartroute:focus-selected-route", () => {
     const currentMap = map.current,

@@ -35,7 +35,8 @@ function isPlace(value: unknown): value is Place {
 
 export function PlaceDetailPanel() {
   const [place, setPlace] = useState<Place | null>(null),
-    [saved, setSaved] = useState(false);
+    [saved, setSaved] = useState(false),
+    [mobile, setMobile] = useState(false);
   const { classify, iconMarkup } = usePoiThemes();
   const { calculatePoint } = useRouteCalculation();
   const boundsRef = useRef<HTMLDivElement>(null);
@@ -52,6 +53,14 @@ export function PlaceDetailPanel() {
     bringToFront,
   } = useWindowFrame("place-detail-window", { locked: false });
   const maximized = entry.maximized;
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 820px)"),
+      updateMobile = () => setMobile(query.matches);
+    updateMobile();
+    query.addEventListener("change", updateMobile);
+    return () => query.removeEventListener("change", updateMobile);
+  }, []);
 
   useEffect(() => {
     const open = (event: Event) => {
@@ -105,6 +114,7 @@ export function PlaceDetailPanel() {
         right: 12,
       }
     : frameStyle;
+  const desktopDragProps = mobile ? {} : dragHandleProps;
 
   return (
     <div
@@ -125,7 +135,7 @@ export function PlaceDetailPanel() {
             ref={windowRef}
             data-sized={maximized || sized ? "true" : undefined}
             role="dialog"
-            aria-modal="false"
+            aria-modal={mobile}
             aria-label="Place details"
           >
             <WindowResizeHandles
@@ -134,7 +144,7 @@ export function PlaceDetailPanel() {
             />
             <div
               className="place-detail-draghandle"
-              {...dragHandleProps}
+              {...desktopDragProps}
               aria-hidden="true"
             >
               <span />
@@ -174,7 +184,7 @@ export function PlaceDetailPanel() {
               </button>
             </div>
             <div className="liquid-window-scroll">
-              <div className="place-detail-media" {...dragHandleProps}>
+              <div className="place-detail-media" {...desktopDragProps}>
                 {image ? (
                   <img
                     src={image}

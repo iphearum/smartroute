@@ -1,106 +1,104 @@
 # Response Formats
 
-Lead with the answer. Explanation only where it changes what the reader does next.
+Be concise. Lead with the result. Use only sections that change the reader’s
+next action.
+
+## Default handoff
+
+```text
+OUTCOME
+<what is now true>
+
+CHANGE
+- <important file or behavior>
+
+VERIFY
+- <command/check> → <result>
+
+RISK
+<remaining uncertainty, or: none identified>
+```
 
 ## Debugging
 
-````text
-Root cause
+```text
+ROOT CAUSE · CONFIRMED | LIKELY | UNKNOWN
+<one sentence>
 
-The crash is in the native build worker, not TypeScript compilation. <CONFIRMED/LIKELY>
+FIX
+<what changed>
 
-Fix
-
-```diff
-- ...
-+ ...
+VERIFY
+<test or observation>
 ```
 
-Verify
-
-```bash
-bun run build
-```
-
-If it still fails
-
-Run step 2 in isolation; if it reproduces, inspect <specific thing>.
-````
-
-Never open with three paragraphs of generic background.
-
-## Architecture
+If blocked:
 
 ```text
-Recommended architecture
-  <diagram>
+BLOCKER
+<specific missing evidence, access, or decision>
 
-Folder structure
-  <tree>
+SAFE PROGRESS
+<what was completed without crossing the blocker>
 
-Responsibilities
-  <one line per layer>
-
-Core interfaces
-  <code>
-
-Implementation path
-  <ordered steps>
-
-Risks / decisions
-  <brief>
+NEED
+<one decision or input>
 ```
 
-Decision blocks stay compact:
+## Architecture or refactor
 
 ```text
-Use: modular monolith
+RECOMMENDATION
+<one decision>
 
-Why:
-- domains are strongly coupled today
-- team size doesn't justify microservice overhead
-- modules stay extractable later
+BOUNDARIES
+<small tree or responsibility mapping, only if useful>
 
-Avoid for now: per-feature services, distributed transactions, multiple databases
+WHY
+<one to three concrete reasons>
 
-Future trigger: extract a module when its scaling, ownership, or deploy lifecycle
-becomes independent.
+TRADEOFF
+<main cost or risk>
+
+VERIFY
+<tests or checks>
 ```
 
 ## Migration
 
 ```text
-Current → Target
+CURRENT → TARGET
+<one line>
 
-Migration strategy
-  Phase 1 ...
-  Phase 2 ...
+PLAN
+1. <phase>
+2. <phase>
 
-Target structure
-  <tree>
+COMPATIBILITY
+<contract, data, or rollout concern>
 
-Compatibility concerns
-  ...
+ROLLBACK
+<specific recovery condition and action>
 
-Implementation
-  <code / file-level changes>
-
-Verification
-  <commands and expected results>
+VERIFY
+<evidence>
 ```
 
-## File-level changes
+## Code and file changes
 
-Always say where code belongs before showing it:
+Name the destination before code:
 
 ```text
-src/modules/student/domain/Student.ts
-src/modules/student/application/CreateStudent.ts
-src/modules/student/infrastructure/PostgresStudentRepository.ts
-src/modules/student/presentation/student.controller.ts
+<feature>/<layer>/<file>
 ```
 
-## Code output standard
+Show code only when it is necessary to explain or apply the change. Prefer a
+small diff over a full-file dump.
 
-`complete · runnable · typed where the language allows · formatted · consistent with the
-surrounding codebase · production-oriented · minimal but extensible`.
+## Style rules
+
+- State facts before explanations.
+- Use one sentence per bullet where possible.
+- Do not repeat the user’s request.
+- Do not include empty sections.
+- Report skipped or failed checks honestly.

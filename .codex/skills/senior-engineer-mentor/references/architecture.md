@@ -69,6 +69,33 @@ src/
 
 Never force enterprise layering onto a small CRUD app.
 
+### Feature package boundaries in an existing application
+
+For an established application with a growing service or module directory, use
+feature packages as recognition and ownership boundaries, not as a reason to
+invent layers:
+
+```text
+src/
+├── shared/               # genuinely reusable behavior
+├── features/
+│   ├── identity/         # one bounded context
+│   └── planning/         # another bounded context
+└── infrastructure/      # databases, clients, queues, adapters
+```
+
+Keep route/controller/CLI files as thin entry points. Move parsing, validation,
+streaming, and domain behavior into the owning feature package. Use short module
+names inside a feature when the package already provides context
+(`feature/stream.py`, `feature/tools.py`); keep descriptive names at shared
+boundaries where context is not obvious.
+
+Operational scripts are entry points rather than domain services. Group them by
+purpose only when the grouping is unambiguous, and preserve their invocation
+contract. A specialized subsystem may remain flat while its files are cohesive;
+split it into subpackages only when the dependency graph or ownership actually
+requires that distinction.
+
 ## Layer responsibility
 
 ```

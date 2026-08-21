@@ -23,3 +23,7 @@ frontend/*.tsbuildinfo
 maps/*
 
 translator
+sample
+AGENTS.md
+
+.*

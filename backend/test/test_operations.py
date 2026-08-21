@@ -4,11 +4,11 @@ from decimal import Decimal
 from app.models.commerce import InventoryItem
 from app.models.map import MapRecord
 from app.models.place import Place
-from app.services.business_service import BusinessService
-from app.services.inventory_service import InventoryService
-from app.services.operations_service import OperationsService
-from app.services.product_service import ProductService
-from app.services.map_service import MapService
+from app.services.commerce.business_service import BusinessService
+from app.services.commerce.inventory_service import InventoryService
+from app.services.commerce.operations_service import OperationsService
+from app.services.commerce.product_service import ProductService
+from app.services.map.map_service import MapService
 
 
 def _run(scenario):

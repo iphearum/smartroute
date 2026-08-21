@@ -101,7 +101,7 @@ settings = Settings(
     custom_graphs=tuple(value.strip() for value in os.getenv("SMARTROUTE_CUSTOM_GRAPHS", "").split(",")
                         if value.strip()),
     host=os.getenv("APP_HOST", "127.0.0.1"),
-    port=int(os.getenv("APP_PORT", "8000")),
+    port=int(os.getenv("APP_PORT", "8100")),
     reload=_boolean("APP_RELOAD"),
     graphhopper_url=os.getenv("GRAPHHOPPER_URL", "").strip().rstrip("/") or None,
     graphhopper_timeout=float(os.getenv("GRAPHHOPPER_TIMEOUT", "15")),
@@ -119,5 +119,5 @@ settings = Settings(
     ai_base_url=os.getenv("AI_BASE_URL", "http://127.0.0.1:8888/v1").strip().rstrip("/") or None,
     ai_api_key=os.getenv("AI_API_KEY", "").strip() or None,
     ai_model=os.getenv("AI_MODEL", "nphearum/PsarAI-2B-GGUF").strip(),
-    ai_timeout=float(os.getenv("AI_TIMEOUT", "45")),
+    ai_timeout=float(os.getenv("AI_TIMEOUT", "120")),
 )

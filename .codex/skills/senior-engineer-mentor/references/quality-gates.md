@@ -30,6 +30,30 @@ partial failure · network interruption · invalid data · duplicate requests
 race conditions · dependency unavailable · resource exhaustion
 ```
 
+## State and ownership
+
+Before adding or moving state, identify its current owner and lifecycle. Keep
+one source of truth for each value; do not combine a persisted value, hook
+value, local copy, or derived override without an explicit synchronization
+contract. Verify that public props control only the behavior their names promise
+and that defaults do not accidentally disable caller-supplied behavior.
+
+## Refactor hygiene
+
+When the same UI markup, protocol handling, or domain rule appears twice,
+extract the shared owner and remove both divergent copies. After moving logic,
+search for orphaned handlers, helpers, types, imports, and derivations. A clean
+type-check does not prove that dead or shadowed code is harmless.
+
+## Runtime and rendered verification
+
+Compilation and type-checking are necessary but do not prove behavior. For
+changes involving rendering, CSS, serialization, or protocol boundaries, verify
+the produced artifact or runtime output: inspect the DOM or response payload,
+the served/bundled style rules, and the actual event or message sequence when
+relevant. Report visual or environment checks that could not be run instead of
+implying they passed.
+
 ## Observability
 
 Important operations must be traceable: structured logs · request ID · correlation ID ·

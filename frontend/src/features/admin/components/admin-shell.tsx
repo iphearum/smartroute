@@ -30,12 +30,14 @@ export function AppShellFooter() {
   return (
     <footer className="app-shell-footer">
       <span className="app-shell-footer-brand">
-        <span className="app-shell-footer-mark" aria-hidden="true">✦</span>
+        <span className="app-shell-footer-mark" aria-hidden="true">
+          <Icon name="spark" />
+        </span>
         <span>PsarAI Platform</span>
       </span>
       <span className="app-shell-footer-note">Shop owner console</span>
       <Link href="/" className="app-shell-footer-link">
-        Open map <span aria-hidden="true">↗</span>
+        Open map <Icon name="chevron-left" className="h-3.5 w-3.5 rotate-180" />
       </Link>
     </footer>
   );

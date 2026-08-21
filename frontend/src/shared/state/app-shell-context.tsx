@@ -11,7 +11,12 @@ import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { MapLanguage } from "@/features/i18n/language";
 
-export type AppNavSection = "Explore" | "Locate" | "Place data" | "Node IDs";
+export type AppNavSection =
+  | "Explore"
+  | "Locate"
+  | "Place data"
+  | "Directions"
+  | "Map tools";
 export type MapLayerKey =
   | "roads"
   | "buildings"

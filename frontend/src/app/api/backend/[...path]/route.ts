@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-const backend = process.env.FASTAPI_URL ?? "http://127.0.0.1:8000";
+const backend = process.env.FASTAPI_URL ?? "http://127.0.0.1:8100";
 async function forward(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },

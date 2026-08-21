@@ -1,154 +1,968 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import type { Place, TravelMode } from "@/features/routes/domain/types";
+import {
+  assistantApi,
+  type AssistantToolAction,
+  type AssistantToolName,
+} from "@/features/assistant/api/assistant-api";
+import { routesApi } from "@/features/routes/api/routes-api";
 import { useRouteCalculation } from "@/features/routes/hooks/use-route-calculation";
 import { useRouteStore } from "@/features/routes/store/route-store";
-import { useWindowFrame } from "@/shared/hooks/use-window-frame";
-import { Icon } from "@/shared/ui/icon";
-import { WindowResizeHandles } from "@/shared/ui/window-resize-handles";
+import { useAppShell } from "@/shared/state/app-shell-context";
+import { useLocalStore } from "@/shared/hooks/use-local-store";
+import { createClientId } from "@/shared/lib/id";
+import {
+  MiniPlatformDock,
+  type MiniPlatformPanel,
+} from "@/shared/ui/mini-platform-dock";
+import {
+  ShopPlatformContent,
+  type ShopFilter,
+} from "@/features/shops/components/shop-platform-content";
+import { isShopPlace } from "@/features/shops/lib/shop-place";
+import { AssistantComposer } from "./assistant-composer";
+import { AssistantMessageThread } from "./assistant-message-thread";
+import { AssistantContextBar } from "./assistant-context-bar";
+import { AssistantChatWindow } from "./assistant-chat-window";
+import { AssistantPresence } from "./assistant-presence";
+import type {
+  AssistantAction,
+  AssistantActivity,
+  ChatAttachment,
+  ChatItem,
+  PendingToolCall,
+  PermissionMode,
+} from "./assistant-types";
+import { useAssistantSessions } from "../hooks/use-assistant-sessions";
+import {
+  beginStreamingSpeech,
+  enqueueStreamingSpeech,
+  finishStreamingSpeech,
+  stopAssistantSpeech,
+} from "../lib/assistant-speech";
+import {
+  ASSISTANT_CONTEXT_TOKEN_LIMIT,
+  contextPayload,
+  estimateContextTokens,
+} from "../lib/context-budget";
+import {
+  type StreamEvent,
+} from "../lib/assistant-stream";
 
-type Action = { type: "search"; query: string; results?: Place[] } | { type: "route"; stops: Place[]; mode?: TravelMode } | null;
-type RouteAction = Extract<Exclude<Action, null>, { type: "route" }>;
-type ChatItem = { id?: string; role: "user" | "assistant"; text: string; action?: Action; streaming?: boolean };
-const historyStorageKey = "smartroute-ai-map-history";
-const socketOrigin = () => {
-  const configured = process.env.NEXT_PUBLIC_AI_SOCKET_URL?.trim();
-  if (configured) return configured.replace(/^http/, "ws").replace(/\/$/, "");
-  return typeof window === "undefined" ? "ws://127.0.0.1:8000/ws/assistant" : `ws://${window.location.hostname}:8000/ws/assistant`;
-};
+/** Ids of the dock panels below; `chat` is the default view. */
+type AsideView = "chat" | "shops";
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
 
-export function AiMapAssistant() {
-  const [input, setInput] = useState(""), [connected, setConnected] = useState(false), [busy, setBusy] = useState(false), [historyHydrated, setHistoryHydrated] = useState(false);
-  const [messages, setMessages] = useState<ChatItem[]>([{ role: "assistant", text: "Tell me what you want to find or where you want to go. I’ll place it on the map." }]);
-  const socket = useRef<WebSocket | null>(null);
+export function AiMapAssistant({
+  onOpenChange,
+  asideWidth = 400,
+  onAsideWidthChange,
+}: {
+  onOpenChange?: (open: boolean) => void;
+  asideWidth?: number;
+  onAsideWidthChange?: (width: number) => void;
+}) {
+  const [input, setInput] = useState("");
+  const [connected, setConnected] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false);
+  const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
+  const [permissionMode, setPermissionMode] =
+    useState<PermissionMode>("automatic");
+  const [thinkingEnabled, setThinkingEnabled] = useLocalStore(
+    "smartroute-ai-thinking-enabled",
+    false,
+    isBoolean,
+  );
+  const [audioResponseEnabled, setAudioResponseEnabled] = useLocalStore(
+    "smartroute-ai-audio-response-enabled",
+    false,
+    isBoolean,
+  );
+  const [activity, setActivity] = useState<AssistantActivity | null>(null);
+  const permissionModeRef = useRef(permissionMode);
+  const [pendingToolCall, setPendingToolCall] =
+    useState<PendingToolCall | null>(null);
+  const {
+    sessions,
+    activeSessionId,
+    messages,
+    setMessages,
+    setSessions,
+    clientKey,
+    startNewChat: createNewChat,
+    selectChatSession: changeSession,
+    branchChatSession,
+    deleteChatSession: removeChatSession,
+  } = useAssistantSessions();
+  const [asideOpen, setAsideOpen] = useState(false);
+  const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
+  const [asideView, setAsideView] = useState<AsideView>("chat");
+  const [shopQuery, setShopQuery] = useState("");
+  const [shopFilter, setShopFilter] = useState<ShopFilter>("all");
+  const [shopPlaces, setShopPlaces] = useState<Place[]>([]);
+  const [shopLoading, setShopLoading] = useState(false);
+  const streamAbort = useRef<AbortController | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
   const streamingMessageId = useRef<string | null>(null);
-  const messagesRef = useRef<ChatItem[]>([]);
+  const messagesRef = useRef(messages);
   const unfinishedTextRef = useRef(new Map<string, string>());
+  const unfinishedReasoningRef = useRef(new Map<string, string>());
+  const turnActivitiesRef = useRef<AssistantActivity[]>([]);
   const threadRef = useRef<HTMLDivElement | null>(null);
-  messagesRef.current = messages;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const language = useAppShell((state) => state.language);
+  const languageRef = useRef(language);
+  const audioResponseEnabledRef = useRef(audioResponseEnabled);
   const { calculateAll } = useRouteCalculation();
-  const { windowRef, entry, zIndex, frameStyle, sized, dragHandleProps, resizeHandleProps, update, setOpen, bringToFront } = useWindowFrame("ai-assistant-window", { minHeight: 360 });
-  const open = entry.open, maximized = entry.maximized;
+  messagesRef.current = messages;
+  permissionModeRef.current = permissionMode;
+  languageRef.current = language;
+  audioResponseEnabledRef.current = audioResponseEnabled;
+  const contextTokens = estimateContextTokens(messages);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(historyStorageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved) as ChatItem[];
-        if (Array.isArray(parsed)) setMessages(parsed.slice(-24));
-      }
-    } catch {}
-    setHistoryHydrated(true);
-  }, []);
+    if (!audioResponseEnabled) stopAssistantSpeech();
+  }, [audioResponseEnabled]);
+
+  const recordActivity = (next: Omit<AssistantActivity, "active">) => {
+    const activity = { ...next, active: true };
+    turnActivitiesRef.current = [...turnActivitiesRef.current, activity];
+    setActivity(activity);
+  };
+
+  const handleAsideOpenChange = (open: boolean) => {
+    setAsideOpen(open);
+    if (!open) setAsideView("chat");
+    onOpenChange?.(open);
+  };
 
   useEffect(() => {
-    if (historyHydrated) localStorage.setItem(historyStorageKey, JSON.stringify(messages.slice(-24)));
-  }, [historyHydrated, messages]);
-
-  useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
+    threadRef.current?.scrollTo({
+      top: threadRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages]);
 
   useEffect(() => {
-    if (!open) return;
-    const ws = new WebSocket(socketOrigin());
-    socket.current = ws;
-    ws.onopen = () => {
-      setConnected(true);
-      try {
-        const saved = localStorage.getItem(historyStorageKey);
-        const previous = saved ? (JSON.parse(saved) as ChatItem[]) : [];
-        ws.send(JSON.stringify({ type: "chat.history", messages: previous.slice(-16).map(({ role, text }) => ({ role, text })) }));
-      } catch {}
+    if (!asideOpen || asideView !== "shops") return;
+    const value = shopQuery.trim();
+    let cancelled = false;
+    setShopLoading(true);
+    const request =
+      value.length >= 2
+        ? routesApi.search(value, 18).then((response) => response.results)
+        : routesApi.places(120);
+    request
+      .then((items) => {
+        if (!cancelled) setShopPlaces(items.filter(isShopPlace));
+      })
+      .catch(() => {
+        if (!cancelled) setShopPlaces([]);
+      })
+      .finally(() => {
+        if (!cancelled) setShopLoading(false);
+      });
+    return () => {
+      cancelled = true;
     };
-    ws.onclose = () => { setConnected(false); setBusy(false); streamingMessageId.current = null; };
-    ws.onmessage = (event) => {
-      const frame = JSON.parse(event.data) as { type?: string; id?: string; data?: { text?: string; delta?: string; content?: string; message?: string; action?: Action } };
-      if (!frame.type) return;
-      if (frame.type === "assistant.start") {
-        streamingMessageId.current = frame.id || null;
-        if (frame.id) unfinishedTextRef.current.set(frame.id, "");
-        setBusy(true);
-      } else if (frame.type === "assistant.delta") {
-        if (!frame.data) return;
-        const id = frame.id || streamingMessageId.current;
-        if (!id) return;
-        const delta = frame.data.text || frame.data.delta || frame.data.content || "";
-        if (!delta) return;
-        const unfinished = `${unfinishedTextRef.current.get(id) || ""}${delta}`;
-        unfinishedTextRef.current.set(id, unfinished);
-        const current = messagesRef.current;
-        const existing = current.findIndex((message) => message.id === id);
-        const next = existing < 0
-          ? [...current, { id, role: "assistant" as const, text: unfinished, streaming: true }]
-          : current.map((message, index) => index === existing ? { ...message, text: unfinished, streaming: true } : message);
-        messagesRef.current = next;
-        setMessages(next);
-      } else if (frame.type === "assistant.done" || frame.type === "assistant.message") {
-        if (!frame.data) return;
-        const id = frame.id || streamingMessageId.current;
-        const unfinished = id ? unfinishedTextRef.current.get(id) : undefined;
-        setMessages((current) => {
-          const existing = id ? current.findIndex((message) => message.id === id) : -1;
-          const next = existing < 0
-            ? [...current, { id: id ?? undefined, role: "assistant" as const, text: frame.data?.message || unfinished || "I’m ready.", action: frame.data?.action }]
-            : current.map((message, index) => index === existing ? { ...message, text: frame.data?.message || unfinished || message.text, action: frame.data?.action, streaming: false } : message);
-          messagesRef.current = next;
-          return next;
+  }, [asideOpen, asideView, shopQuery]);
+
+  useEffect(() => {
+    setConnected(asideOpen);
+    if (asideOpen) return;
+    streamAbort.current?.abort();
+    streamAbort.current = null;
+    setBusy(false);
+    setActivity(null);
+    stopAssistantSpeech();
+    turnActivitiesRef.current = [];
+    streamingMessageId.current = null;
+  }, [asideOpen]);
+
+  const finishAssistantMessage = (frame: AssistantFrame) => {
+    if (!frame.data) return;
+    const id = frame.id || streamingMessageId.current;
+    const unfinished = id ? unfinishedTextRef.current.get(id) : undefined;
+    const reasoning = id ? unfinishedReasoningRef.current.get(id) : undefined;
+    const activities = turnActivitiesRef.current.map((item) => ({
+      ...item,
+      active: false,
+    }));
+    setMessages((current) => {
+      const existing = id
+        ? current.findIndex((message) => message.id === id)
+        : -1;
+      const next =
+        existing < 0
+          ? [
+              ...current,
+              {
+                id: id ?? undefined,
+                role: "assistant" as const,
+                text: frame.data?.message || unfinished || "I’m ready.",
+                reasoning: reasoning || undefined,
+                action: frame.data?.action,
+                activities,
+              },
+            ]
+          : current.map((message, index) =>
+              index === existing
+                ? {
+                    ...message,
+                    text: frame.data?.message || unfinished || message.text,
+                    reasoning: reasoning || message.reasoning,
+                    action: frame.data?.action ?? message.action,
+                    activities: activities.length ? activities : message.activities,
+                    streaming: false,
+                  }
+                : message,
+            );
+      messagesRef.current = next;
+      return next;
+    });
+    if (id) unfinishedTextRef.current.delete(id);
+    if (id) unfinishedReasoningRef.current.delete(id);
+    turnActivitiesRef.current = [];
+    streamingMessageId.current = null;
+    setBusy(false);
+    setActivity(null);
+  };
+
+  const submitToolResult = async (
+    streamId: string,
+    toolCallId: string,
+    result: Parameters<typeof assistantApi.submitToolResult>[2],
+  ) => {
+    await assistantApi.submitToolResult(streamId, toolCallId, result);
+  };
+
+  const executeToolCall = async (
+    streamId: string,
+    toolCallId: string,
+    name: AssistantToolName,
+    arguments_: Record<string, unknown>,
+  ) => {
+    try {
+      const result = await assistantApi.executeTool(name, arguments_);
+      let toolResult = result;
+      if (result.action) {
+        const location = await applyAction(result.action);
+        if (location) toolResult = { ...result, location };
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === streamId
+              ? { ...message, action: result.action }
+              : message,
+          ),
+        );
+      }
+      await submitToolResult(streamId, toolCallId, toolResult);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Tool execution failed";
+      await submitToolResult(streamId, toolCallId, { error: message });
+    }
+  };
+
+  const approvePendingTool = () => {
+    if (!pendingToolCall || !pendingToolCall.frameId) return;
+    const pending = pendingToolCall;
+    const streamId = pending.frameId!;
+    setPendingToolCall(null);
+    void executeToolCall(
+      streamId,
+      pending.toolCallId,
+      pending.name as AssistantToolName,
+      pending.arguments,
+    );
+  };
+
+  const rejectPendingTool = () => {
+    if (!pendingToolCall || !pendingToolCall.frameId) return;
+    void submitToolResult(pendingToolCall.frameId, pendingToolCall.toolCallId, {
+      error: "The user declined this map action.",
+    });
+    setPendingToolCall(null);
+  };
+
+  const handleStreamEvent = (streamId: string, event: StreamEvent) => {
+    if (event.type === "reasoning") {
+      appendReasoningDelta(
+        { id: streamId, data: { text: event.delta } },
+        messagesRef,
+        unfinishedReasoningRef,
+        streamingMessageId,
+        setMessages,
+        setActivity,
+      );
+      return;
+    }
+    if (event.type === "content") {
+      appendDelta(
+        { id: streamId, data: { text: event.delta } },
+        messagesRef,
+        unfinishedTextRef,
+        streamingMessageId,
+        setMessages,
+        unfinishedReasoningRef,
+        audioResponseEnabledRef.current ? enqueueStreamingSpeech : undefined,
+      );
+      return;
+    }
+    if (event.type === "tool" && event.status === "start") {
+      const name = event.name as AssistantToolName;
+      const toolCallId = event.toolCallId;
+      if (!toolCallId || !name) return;
+      const arguments_ = event.arguments || {};
+      const requiresApproval =
+        name !== "search_places" &&
+        name !== "search_web" &&
+        permissionModeRef.current === "ask";
+      if (requiresApproval) {
+        setPendingToolCall({
+          frameId: streamId,
+          toolCallId,
+          name,
+          arguments: arguments_,
         });
-        if (id) unfinishedTextRef.current.delete(id);
-        streamingMessageId.current = null;
-        setBusy(false);
+      } else if (permissionModeRef.current === "disabled") {
+        void submitToolResult(streamId, toolCallId, {
+          error: "Assistant map tools are disabled.",
+        });
+      } else {
+        void executeToolCall(streamId, toolCallId, name, arguments_);
+      }
+      return;
+    }
+    if (event.type === "done") {
+      if (audioResponseEnabledRef.current) finishStreamingSpeech();
+      setActivity(null);
+      finishAssistantMessage({
+        id: streamId,
+        data: {
+          message: event.message,
+          action: event.action as AssistantAction,
+        },
+      });
+    }
+  };
+
+  const handleSocketFrame = (frame: {
+    type?: string;
+    id?: string;
+    data?: Record<string, unknown>;
+  }) => {
+    const streamId = frame.id || streamingMessageId.current || "";
+    if (!streamId) return;
+    const data = frame.data || {};
+    if (frame.type === "assistant.activity") {
+      const kind = data.kind === "tool" ? "tool" : "thinking";
+      if (kind === "tool") {
+        recordActivity({
+          kind,
+          label: String(data.label || "Using a tool"),
+          detail: typeof data.detail === "string" ? data.detail : undefined,
+          startedAt: Date.now(),
+        });
+      } else {
+        setActivity({
+          kind: "thinking",
+          label: String(data.label || "Thinking…"),
+          detail: typeof data.detail === "string" ? data.detail : undefined,
+          startedAt: Date.now(),
+        });
+      }
+      return;
+    }
+    if (frame.type === "assistant.error") {
+      finishAssistantMessage({
+        id: streamId,
+        data: { message: String(data.message || "Assistant request failed.") },
+      });
+      return;
+    }
+    const eventType =
+      frame.type === "assistant.delta"
+        ? "content"
+        : frame.type === "assistant.reasoning_delta"
+          ? "reasoning"
+          : frame.type === "assistant.tool_call"
+            ? "tool"
+            : frame.type === "assistant.usage"
+              ? "usage"
+              : frame.type === "assistant.done"
+                ? "done"
+                : null;
+    if (!eventType) return;
+    handleStreamEvent(streamId, {
+      type: eventType,
+      delta: typeof data.text === "string" ? data.text : undefined,
+      name: typeof data.name === "string" ? data.name : undefined,
+      status: frame.type === "assistant.tool_call" ? "start" : undefined,
+      toolCallId: typeof data.toolCallId === "string" ? data.toolCallId : undefined,
+      arguments: data.arguments as Record<string, unknown> | undefined,
+      message: typeof data.message === "string" ? data.message : undefined,
+      action: data.action,
+      input: typeof data.prompt_tokens === "number" ? data.prompt_tokens : undefined,
+      output: typeof data.completion_tokens === "number" ? data.completion_tokens : undefined,
+    } as StreamEvent);
+  };
+
+  const socketFrameHandler = useRef(handleSocketFrame);
+  socketFrameHandler.current = handleSocketFrame;
+
+  useEffect(() => {
+    if (!asideOpen || typeof window === "undefined") return;
+    const configured = process.env.NEXT_PUBLIC_AI_SOCKET_URL?.trim();
+    const url = configured || `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/assistant`;
+    const socket = new WebSocket(url);
+    socketRef.current = socket;
+    socket.onopen = () => setConnected(true);
+    socket.onmessage = (event) => {
+      try {
+        socketFrameHandler.current(JSON.parse(event.data) as { type?: string; id?: string; data?: Record<string, unknown> });
+      } catch (error) {
+        console.error("Invalid assistant socket message", error);
       }
     };
-    return () => { ws.close(); socket.current = null; setConnected(false); };
-  }, [open]);
+    socket.onerror = () => setConnected(false);
+    socket.onclose = () => {
+      if (socketRef.current === socket) socketRef.current = null;
+      setConnected(false);
+    };
+    return () => {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close();
+      if (socketRef.current === socket) socketRef.current = null;
+    };
+  }, [asideOpen]);
+
+  const transmit = async (
+    text: string,
+    messageAttachments: ChatAttachment[],
+    addUserMessage: boolean,
+  ) => {
+    const clientId = createClientId("stream");
+    streamingMessageId.current = clientId;
+    unfinishedTextRef.current.set(clientId, "");
+    unfinishedReasoningRef.current.set(clientId, "");
+    turnActivitiesRef.current = [];
+    if (thinkingEnabled) {
+      recordActivity({
+        kind: "thinking",
+        label: "Thinking…",
+        startedAt: Date.now(),
+      });
+    }
+    if (audioResponseEnabledRef.current) beginStreamingSpeech();
+    const userMessage: ChatItem = {
+      id: `user-${clientId}`,
+      role: "user",
+      text: text || "Attached files",
+      attachments: messageAttachments,
+    };
+    const nextMessages = addUserMessage
+      ? [...messagesRef.current, userMessage]
+      : messagesRef.current;
+    if (addUserMessage) {
+      messagesRef.current = nextMessages;
+      setMessages(nextMessages);
+    }
+    setBusy(true);
+    const controller = new AbortController();
+    streamAbort.current?.abort();
+    streamAbort.current = controller;
+    try {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        throw new Error("Assistant socket is not connected");
+      }
+      socket.send(
+        JSON.stringify({
+          type: "chat.message",
+          clientId,
+          language: languageRef.current,
+          thinking: thinkingEnabled,
+          text,
+          messages: contextPayload(nextMessages),
+          attachments: messageAttachments.map(
+            ({ id, name, type, size, dataUrl, text: fileText }) => ({
+              id,
+              name,
+              type,
+              size,
+              dataUrl,
+              text: fileText,
+            }),
+          ),
+        }),
+      );
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setActivity(null);
+        stopAssistantSpeech();
+        console.error("Assistant stream failed", error);
+        finishAssistantMessage({
+          id: clientId,
+          data: {
+            message:
+              "I couldn't connect to the assistant service. Please check that the FastAPI backend is running on port 8100 and try again.",
+          },
+        });
+      }
+    } finally {
+      if (streamAbort.current === controller) streamAbort.current = null;
+    }
+  };
 
   const send = () => {
     const text = input.trim();
-    if (busy || !text || !socket.current || socket.current.readyState !== WebSocket.OPEN) return;
-    const clientId = crypto.randomUUID();
-    setMessages((current) => [...current, { id: `user-${clientId}`, role: "user", text }]);
-    socket.current.send(JSON.stringify({ type: "chat.message", clientId, text }));
+    if (
+      busy ||
+      (!text && !attachments.length) ||
+      !connected
+    )
+      return;
+    transmit(text, attachments, true);
     setInput("");
+    setAttachments([]);
+    setComposerMenuOpen(false);
   };
+
+  const deleteMessage = (messageId: string) => {
+    if (busy) return;
+    const current = messagesRef.current;
+    const index = current.findIndex((message) => message.id === messageId);
+    if (index < 0) return;
+    const removeCount = current[index]?.role === "user" && current[index + 1]?.role === "assistant" ? 2 : 1;
+    const next = current.filter((_, itemIndex) => itemIndex < index || itemIndex >= index + removeCount);
+    messagesRef.current = next;
+    setMessages(next);
+  };
+
+  const editMessage = (messageId: string) => {
+    if (busy) return;
+    const current = messagesRef.current;
+    const index = current.findIndex((message) => message.id === messageId);
+    const message = current[index];
+    if (!message || message.role !== "user") return;
+    setInput(message.text === "Attached files" ? "" : message.text);
+    setAttachments(message.attachments ?? []);
+    const next = current.slice(0, index);
+    messagesRef.current = next;
+    setMessages(next);
+  };
+
+  const branchFromMessage = (messageId: string) => {
+    if (busy) return;
+    const index = messagesRef.current.findIndex((message) => message.id === messageId);
+    if (index < 0) return;
+    branchChatSession(messagesRef.current.slice(0, index + 1));
+    setInput("");
+    setAttachments([]);
+    setPendingToolCall(null);
+  };
+
+  const retryAssistantMessage = (messageId: string) => {
+    if (busy || !connected) return;
+    const current = messagesRef.current;
+    const index = current.findIndex((message) => message.id === messageId);
+    const userMessage = index > 0 ? current[index - 1] : undefined;
+    if (!userMessage || userMessage.role !== "user") return;
+    const next = current.filter((message) => message.id !== messageId);
+    messagesRef.current = next;
+    setMessages(next);
+    transmit(userMessage.text === "Attached files" ? "" : userMessage.text, userMessage.attachments ?? [], false);
+  };
+
+  const addFiles = async (files: FileList | File[]) => {
+    const next: ChatAttachment[] = [];
+    for (const file of Array.from(files).slice(0, 5)) {
+      if (file.size > 5 * 1024 * 1024) continue;
+      const attachment: ChatAttachment = {
+        id: createClientId("attachment"),
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+      };
+      if (file.type.startsWith("image/"))
+        attachment.dataUrl = await readDataUrl(file);
+      else if (
+        file.type.startsWith("text/") ||
+        /\.(md|json|csv|ts|tsx|js|py|css|html)$/i.test(file.name)
+      )
+        attachment.text = (await file.text()).slice(0, 64_000);
+      next.push(attachment);
+    }
+    setAttachments((current) => [...current, ...next].slice(0, 5));
+  };
+
   const applyPlace = (place: Place) => {
     const index = useRouteStore.getState().activePoint;
     useRouteStore.getState().setPoint(index, place);
-    window.dispatchEvent(new CustomEvent("smartroute:focus-coordinate", { detail: { latitude: place.latitude, longitude: place.longitude } }));
+    window.dispatchEvent(
+      new CustomEvent("smartroute:focus-coordinate", {
+        detail: { latitude: place.latitude, longitude: place.longitude },
+      }),
+    );
   };
+
   const applyRoute = async (stops: Place[], mode?: TravelMode) => {
     if (stops.length < 2) return;
     const route = useRouteStore.getState();
     route.setMode(mode || route.mode);
     stops.slice(0, 7).forEach((stop, index) => route.setPoint(index, stop));
-    await calculateAll(stops.slice(0, 7).map((stop) => [stop.latitude, stop.longitude]));
+    await calculateAll(
+      stops.slice(0, 7).map((stop) => [stop.latitude, stop.longitude]),
+    );
     window.dispatchEvent(new CustomEvent("smartroute:focus-selected-route"));
   };
 
-  return <>
-    <div className="ai-jarvis-launcher opacity-35 absolute bottom-[calc(var(--floating-controls-bottom))] left-1/2 z-[720] -translate-x-1/2">
-      <button type="button" className="ai-jarvis-main" onClick={() => setOpen(true)} aria-label="Open AI map copilot">
-        <span className="ai-jarvis-ring ai-jarvis-ring-primary" />
-        <span className="ai-jarvis-ring ai-jarvis-ring-secondary" />
-        <span className="ai-jarvis-content">
-          <strong>Bunjure !</strong>
-        <span className="ai-jarvis-bars"><i /><i /><i /></span></span>
-      </button>
-    </div>
-    <div className="place-detail-bounds pointer-events-none fixed inset-0" style={{ zIndex }}>
-      <AnimatePresence>
-        {open && <motion.section className="place-detail-shell resizable-liquid-window shop-platform-shell liquid-card liquid-popover pointer-events-auto absolute top-3.5 right-3.5 w-[380px] overflow-hidden rounded-[28px]" style={maximized ? { width: "min(760px, calc(100vw - 24px))", height: "min(760px, calc(100dvh - 24px))", left: "auto", top: 12, right: 12 } : frameStyle} onPointerDownCapture={bringToFront} initial={{ opacity: 0, scale: 0.96, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: -10 }} transition={{ type: "spring", stiffness: 380, damping: 34 }} data-sized={maximized || sized ? "true" : undefined} role="dialog" aria-label="AI map copilot" ref={windowRef}>
-          <WindowResizeHandles handleProps={resizeHandleProps} hidden={maximized} />
-          <div className="place-detail-draghandle" {...dragHandleProps} aria-hidden="true"><span /></div>
-          <div className="window-controls"><button type="button" className="shop-platform-window-toggle" onClick={() => update({ maximized: !maximized })} aria-label={maximized ? "Restore map copilot" : "Maximize map copilot"}><Icon name={maximized ? "minimize" : "maximize"} className="h-4 w-4" /></button><button type="button" className="place-detail-close" onClick={() => setOpen(false)} aria-label="Close map copilot"><Icon name="close" className="h-4 w-4" /></button></div>
-          <div className="shop-platform-heading" {...dragHandleProps}><span className="shop-platform-eyebrow">MINI PLATFORM</span><h2>Map copilot</h2><p>{connected ? "Connected to PsarAI" : "Connecting to local AI…"}</p></div>
-          <div className="shop-platform-search-wrap"><Icon name="spark" className="h-4 w-4" /><input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); send(); } }} placeholder={busy ? "Thinking…" : "Find a place or plan a route"} aria-label="Ask the map" disabled={busy} /><button type="button" className="text-emerald-700 disabled:opacity-40" onClick={send} disabled={!connected || busy || !input.trim()} aria-label="Send message"><Icon name="directions" className="h-4 w-4" /></button></div>
-          <div ref={threadRef} className="shop-platform-results liquid-window-scroll space-y-3 p-3" aria-live="polite">{messages.map((message, index) => <div key={index} className={`grid max-w-[92%] gap-2 text-xs ${message.role === "user" ? "ml-auto" : ""}`}><span className={`rounded-2xl px-3 py-2 ${message.role === "user" ? "rounded-br-sm bg-emerald-100 text-emerald-950" : "rounded-bl-sm bg-white/45 text-slate-700"}`}>{message.text}{message.streaming && <span className="ml-1 inline-block h-3 w-1 animate-pulse rounded-full bg-emerald-600 align-[-2px]" aria-label="Generating" />}</span>{message.action?.type === "search" && <div className="grid gap-1.5">{(message.action.results || []).map((place) => <button type="button" key={`${place.name}-${place.latitude}`} className="shop-platform-result" onClick={() => applyPlace(place)}><span className="shop-platform-result-icon"><Icon name="pin" className="h-4 w-4" /></span><span className="min-w-0 flex-1 text-left"><strong>{place.name}</strong><span>{place.address || "Show on map"}</span></span><Icon name="chevron-left" className="h-3.5 w-3.5 rotate-180" /></button>)}</div>}{message.action?.type === "route" && (() => { const action = message.action as RouteAction; return <button type="button" className="shop-platform-result" onClick={() => applyRoute(action.stops, action.mode)}><span className="shop-platform-result-icon"><Icon name="directions" className="h-4 w-4" /></span><span className="min-w-0 flex-1 text-left"><strong>Plot route on map</strong><span>{action.stops.map((stop) => stop.name).join(" → ")}</span></span><Icon name="chevron-left" className="h-3.5 w-3.5 rotate-180" /></button>; })()}</div>)}</div>
-        </motion.section>}
-      </AnimatePresence>
-    </div>
-  </>;
+  const requestCurrentLocation = () =>
+    new Promise<{ latitude: number; longitude: number; accuracy?: number }>(
+      (resolve, reject) => {
+        if (!window.isSecureContext) {
+          reject(new Error("Location requires a secure HTTPS connection."));
+          return;
+        }
+        if (!navigator.geolocation) {
+          reject(new Error("Location is not available on this device."));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          ({ coords }) => {
+            const location = {
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              accuracy: coords.accuracy,
+            };
+            window.dispatchEvent(
+              new CustomEvent("smartroute:show-current-location", {
+                detail: location,
+              }),
+            );
+            resolve(location);
+          },
+          (error) => {
+            const message =
+              error.code === error.PERMISSION_DENIED
+                ? "Location access was denied. Allow it in device Settings, then try again."
+                : "Your current location is unavailable. Check Location Services.";
+            window.dispatchEvent(
+              new CustomEvent("smartroute:location-error", {
+                detail: message,
+              }),
+            );
+            reject(new Error(message));
+          },
+          { enableHighAccuracy: true, timeout: 20_000, maximumAge: 60_000 },
+        );
+      },
+    );
+
+  const applyAction = async (action: AssistantToolAction) => {
+    if (action.type === "search" || action.type === "web_search") return;
+    if (action.type === "point") return applyPlace(action.place);
+    if (action.type === "route") return applyRoute(action.stops, action.mode);
+    if (action.type === "focus") {
+      window.dispatchEvent(
+        new CustomEvent("smartroute:focus-coordinate", { detail: action }),
+      );
+      return;
+    }
+    if (action.type === "location_request") return requestCurrentLocation();
+    window.dispatchEvent(
+      new CustomEvent(
+        action.command === "reset_map_view"
+          ? "smartroute:reset-map-view"
+          : "smartroute:clear-route-points",
+      ),
+    );
+  };
+
+  const runMapAction = (action: "reset" | "clear" | "focus") => {
+    const events = {
+      reset: "smartroute:reset-map-view",
+      clear: "smartroute:clear-route-points",
+      focus: "smartroute:focus-selected-route",
+    } as const;
+    window.dispatchEvent(new CustomEvent(events[action]));
+  };
+
+  const startNewChat = () => {
+    if (busy) return;
+    createNewChat();
+    setInput("");
+    setAttachments([]);
+    setPendingToolCall(null);
+  };
+
+  const selectChatSession = (sessionId: string) => {
+    if (busy || sessionId === activeSessionId) return;
+    changeSession(sessionId);
+    setInput("");
+    setAttachments([]);
+    setPendingToolCall(null);
+  };
+
+  const deleteChatSession = (sessionId: string) => {
+    if (busy) return;
+    removeChatSession(sessionId);
+    setInput("");
+    setAttachments([]);
+    setPendingToolCall(null);
+  };
+
+  const syncChatSession = async () => {
+    if (!clientKey || !activeSessionId || syncing) return;
+    const session = sessions.find((item) => item.id === activeSessionId);
+    if (!session) return;
+    setSyncing(true);
+    try {
+      const syncMessages = session.messages.map(({ role, text }) => ({
+        role,
+        text,
+      }));
+      const remote = session.serverId
+        ? await assistantApi.saveSession(clientKey, {
+            id: session.serverId,
+            title: session.title,
+            messages: syncMessages,
+          })
+        : await assistantApi.createSession(
+            clientKey,
+            session.title,
+            syncMessages,
+          );
+      setSessions((current) =>
+        current.map((item) =>
+          item.id === session.id ? { ...item, serverId: remote.id } : item,
+        ),
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const panels: MiniPlatformPanel[] = [
+    {
+      id: "chat",
+      railLabel: "MAP AI",
+      icon: "spark",
+      title: "Map copilot",
+      ariaLabel: "AI map copilot",
+      status: <AssistantPresence busy={busy} compact />,
+      content: (
+        <AssistantChatWindow
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          activeSessionTitle={
+            sessions.find((session) => session.id === activeSessionId)?.title ||
+            "New chat"
+          }
+          connectionStatus={
+            <div
+              className={`assistant-connection-status ${connected ? "is-ready" : "is-connecting"}`}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="assistant-connection-dot" aria-hidden="true" />
+              <span>{connected ? "Ready" : "Connecting…"}</span>
+            </div>
+          }
+          historyOpen={chatHistoryOpen}
+          syncing={syncing}
+          onHistoryToggle={() => setChatHistoryOpen((open) => !open)}
+          onNewChat={startNewChat}
+          onSelectSession={selectChatSession}
+          onDeleteSession={deleteChatSession}
+          onSync={() => void syncChatSession()}
+          contextTokens={contextTokens}
+          contextTokenLimit={ASSISTANT_CONTEXT_TOKEN_LIMIT}
+        >
+          <AssistantContextBar />
+          <AssistantMessageThread
+            messages={messages}
+            threadRef={threadRef}
+            onPlaceSelect={applyPlace}
+            onRouteSelect={applyRoute}
+            pendingToolCall={pendingToolCall}
+            onApproveTool={approvePendingTool}
+            onRejectTool={rejectPendingTool}
+            onRetry={retryAssistantMessage}
+            onDelete={deleteMessage}
+            onEdit={editMessage}
+            onBranch={branchFromMessage}
+            activity={activity}
+          />
+          <AssistantComposer
+            input={input}
+            onInputChange={setInput}
+            busy={busy}
+            connected={connected}
+            attachments={attachments}
+            setAttachments={setAttachments}
+            composerMenuOpen={composerMenuOpen}
+            setComposerMenuOpen={setComposerMenuOpen}
+            permissionMenuOpen={permissionMenuOpen}
+            setPermissionMenuOpen={setPermissionMenuOpen}
+            permissionMode={permissionMode}
+            setPermissionMode={setPermissionMode}
+            thinkingEnabled={thinkingEnabled}
+            setThinkingEnabled={setThinkingEnabled}
+            audioResponseEnabled={audioResponseEnabled}
+            setAudioResponseEnabled={setAudioResponseEnabled}
+            fileInputRef={fileInputRef}
+            onAddFiles={addFiles}
+            onSend={send}
+            onMapAction={runMapAction}
+            onMapSearch={() => setInput((value) => value || "Find ")}
+            onWebSearch={() => setInput((value) => value || "Search the internet for ")}
+          />
+        </AssistantChatWindow>
+      ),
+    },
+    {
+      id: "shops",
+      railLabel: "SHOPS",
+      icon: "box",
+      title: "Shops, restaurants & stores",
+      ariaLabel: "Shop window",
+      status: (
+        <p className="assistant-aside-status">
+          Explore places on the map and open their details.
+        </p>
+      ),
+      content: (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ShopPlatformContent
+            query={shopQuery}
+            onQueryChange={setShopQuery}
+            filter={shopFilter}
+            onFilterChange={setShopFilter}
+            places={shopPlaces}
+            loading={shopLoading}
+            onPlaceSelect={(place) => {
+              window.dispatchEvent(
+                new CustomEvent("smartroute:open-place-detail", {
+                  detail: place,
+                }),
+              );
+              handleAsideOpenChange(false);
+            }}
+          />
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <MiniPlatformDock
+      windowId="ai-assistant-window"
+      panels={panels}
+      activeId={asideView}
+      onActiveChange={(id) => setAsideView(id as AsideView)}
+      open={asideOpen}
+      onOpenChange={handleAsideOpenChange}
+      width={asideWidth}
+      onWidthChange={onAsideWidthChange}
+      minHeight={360}
+    />
+  );
 }
+
+async function readDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function appendDelta(
+  frame: AssistantFrame,
+  messagesRef: React.MutableRefObject<ChatItem[]>,
+  unfinishedTextRef: React.MutableRefObject<Map<string, string>>,
+  streamingMessageId: React.MutableRefObject<string | null>,
+  setMessages: React.Dispatch<React.SetStateAction<ChatItem[]>>,
+  unfinishedReasoningRef: React.MutableRefObject<Map<string, string>>,
+  onSpeechDelta?: (delta: string) => void,
+) {
+  if (!frame.data) return;
+  const id = frame.id || streamingMessageId.current;
+  if (!id) return;
+  const delta = frame.data.text || frame.data.delta || frame.data.content || "";
+  if (!delta) return;
+  onSpeechDelta?.(delta);
+  const text = `${unfinishedTextRef.current.get(id) || ""}${delta}`;
+  unfinishedTextRef.current.set(id, text);
+  const current = messagesRef.current;
+  const existing = current.findIndex((message) => message.id === id);
+  const next =
+    existing < 0
+      ? [
+          ...current,
+          {
+            id,
+            role: "assistant" as const,
+            text,
+            reasoning: unfinishedReasoningRef.current.get(id) || undefined,
+            streaming: true,
+          },
+        ]
+      : current.map((message, index) =>
+          index === existing ? { ...message, text, streaming: true } : message,
+        );
+  messagesRef.current = next;
+  setMessages(next);
+}
+
+function appendReasoningDelta(
+  frame: AssistantFrame,
+  messagesRef: React.MutableRefObject<ChatItem[]>,
+  unfinishedReasoningRef: React.MutableRefObject<Map<string, string>>,
+  streamingMessageId: React.MutableRefObject<string | null>,
+  setMessages: React.Dispatch<React.SetStateAction<ChatItem[]>>,
+  setActivity: React.Dispatch<React.SetStateAction<AssistantActivity | null>>,
+) {
+  if (!frame.data) return;
+  const id = frame.id || streamingMessageId.current;
+  const delta = frame.data.text || frame.data.delta || "";
+  if (!id || !delta) return;
+  const reasoning = `${unfinishedReasoningRef.current.get(id) || ""}${delta}`;
+  unfinishedReasoningRef.current.set(id, reasoning);
+  setActivity((current) =>
+    current?.kind === "thinking" ? { ...current, detail: reasoning } : current,
+  );
+  const next = messagesRef.current.map((message) =>
+    message.id === id ? { ...message, reasoning } : message,
+  );
+  if (next !== messagesRef.current) {
+    messagesRef.current = next;
+    setMessages(next);
+  }
+}
+
+type AssistantFrame = {
+  type?: string;
+  id?: string;
+  data?: {
+    text?: string;
+    delta?: string;
+    content?: string;
+    message?: string;
+    thinking?: boolean;
+    kind?: "thinking" | "tool";
+    label?: string;
+    detail?: string;
+    action?: AssistantAction;
+    toolCallId?: string;
+    name?: AssistantToolName;
+    arguments?: Record<string, unknown>;
+  };
+};

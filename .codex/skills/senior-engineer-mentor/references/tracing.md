@@ -61,6 +61,15 @@ memory/CPU/GPU usage · network traces · a minimal reproduction · existing tes
 
 If evidence is unavailable, say what you'd need and what you assumed instead.
 
+## Boundary integrity
+
+Trace representations across boundaries, not only function calls. Confirm that
+internal markup, tool envelopes, database rows, serialized payloads, and UI
+state are transformed into the next boundary's contract exactly once. A useful
+failure test is: can an internal protocol token, duplicate event, or stale
+derived value leak into a user-visible response? If so, fix the boundary owner
+and add a regression test at that seam.
+
 ## Concurrency traps to check by reflex
 
 Read-then-write without a constraint, missing unique index, non-idempotent handlers,

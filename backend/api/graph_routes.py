@@ -15,7 +15,7 @@ from app.routing.graph_helper import GraphHelper
 from app.routing.router_engine import RouterEngine
 from app.support.google_maps import parse_google_maps_place, parse_google_maps_route
 from app.clients.graphhopper import GraphHopperError
-from app.services.map_service import MapService
+from app.services.map.map_service import MapService
 from config.settings import settings
 
 router = APIRouter()

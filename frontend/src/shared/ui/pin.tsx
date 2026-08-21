@@ -44,8 +44,8 @@ const designs: Record<
 
 export function Pin({
   variant = "address",
-  color = "#ef4136",
-  shadowColor = "#2b2b2b",
+  color = "var(--color-status-danger)",
+  shadowColor = "var(--color-text-primary)",
   shadowOpacity = 1,
   size = 32,
   title,

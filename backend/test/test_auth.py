@@ -9,8 +9,8 @@ from app.support.security import (
     hash_password,
     verify_password,
 )
-from app.services.user_service import UserService
-from app.services.map_service import MapService
+from app.services.auth.user_service import UserService
+from app.services.map.map_service import MapService
 
 
 def test_create_user_hashes_password_and_normalizes_email(tmp_path):

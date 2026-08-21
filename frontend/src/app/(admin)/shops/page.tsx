@@ -78,18 +78,24 @@ export default function ShopsPage() {
 
   if (!business) return null;
   const branch = business.branches[0];
-  const activeProducts = products?.filter((product) => product.status === "active").length;
+  const activeProducts = products?.filter(
+    (product) => product.status === "active",
+  ).length;
 
   const save = async () => {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await commerceApi.updateBusiness(business.id, { display_name: name.trim() });
+      await commerceApi.updateBusiness(business.id, {
+        display_name: name.trim(),
+      });
       toast.success("Shop name updated");
       setEditing(false);
       await refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Could not save changes");
+      toast.error(
+        err instanceof ApiError ? err.message : "Could not save changes",
+      );
     } finally {
       setSaving(false);
     }
@@ -108,7 +114,11 @@ export default function ShopsPage() {
               autoFocus
             />
             <div className="flex gap-2">
-              <button className="place-detail-add" disabled={saving} onClick={() => void save()}>
+              <button
+                className="place-detail-add"
+                disabled={saving}
+                onClick={() => void save()}
+              >
                 {saving ? "Saving…" : "Save"}
               </button>
               <button className="pos-tab" onClick={() => setEditing(false)}>
@@ -119,9 +129,13 @@ export default function ShopsPage() {
         ) : (
           <>
             <div className="flex items-center gap-4">
-              <span className="shop-logo">🏪</span>
+              <span className="shop-logo">
+                <Icon name="box" />
+              </span>
               <span className="min-w-0 flex-1">
-                <strong className="block text-base">{business.display_name}</strong>
+                <strong className="block text-base">
+                  {business.display_name}
+                </strong>
                 <span className="block truncate text-xs text-slate-500">
                   {branch ? branch.place__name : "No branch linked yet"}
                 </span>
@@ -192,11 +206,15 @@ export default function ShopsPage() {
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-slate-500">Pickup</dt>
-              <dd className="font-semibold">{branch.pickup_enabled ? "Enabled" : "Disabled"}</dd>
+              <dd className="font-semibold">
+                {branch.pickup_enabled ? "Enabled" : "Disabled"}
+              </dd>
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-slate-500">Delivery</dt>
-              <dd className="font-semibold">{branch.delivery_enabled ? "Enabled" : "Disabled"}</dd>
+              <dd className="font-semibold">
+                {branch.delivery_enabled ? "Enabled" : "Disabled"}
+              </dd>
             </div>
           </dl>
         </LiquidCard>

@@ -14,6 +14,22 @@
 
 :root {
   --size-heigh: 40px;
+  /* Admin theme roles. These intentionally alias the public semantic palette;
+     a future admin theme can override this small surface API without
+     rewriting every dashboard or shop-management selector. */
+  --admin-text-primary: var(--color-text-primary);
+  --admin-text-secondary: var(--color-text-secondary);
+  --admin-text-muted: var(--color-text-muted);
+  --admin-brand: var(--color-brand-primary);
+  --admin-brand-strong: var(--color-brand-strong);
+  --admin-surface-page: var(--color-surface-solid);
+  --admin-surface-soft: var(--color-surface-soft);
+  --admin-surface-highlight: var(--color-surface-highlight);
+  --admin-border: var(--color-border-subtle);
+  --admin-success: var(--color-status-success);
+  --admin-warning: var(--color-status-warning);
+  --admin-danger: var(--color-status-danger);
+  --admin-info: var(--color-status-info);
 }
 
 .shop-preview-flag {
@@ -1406,10 +1422,13 @@
   color: var(--ink);
   font-size: 12px;
   outline: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72),
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
     0 4px 12px rgba(20, 48, 37, 0.035);
   color-scheme: light;
-  transition: border-color 0.16s ease, background 0.16s ease,
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
     box-shadow 0.16s ease;
   -webkit-backdrop-filter: blur(14px) saturate(1.35);
   backdrop-filter: blur(14px) saturate(1.35);
@@ -1425,7 +1444,8 @@
 .admin-form-input:focus-visible {
   border-color: var(--liquid-active-color);
   background-color: rgba(255, 255, 255, 0.68);
-  box-shadow: 0 0 0 3px var(--liquid-active-background),
+  box-shadow:
+    0 0 0 3px var(--liquid-active-background),
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 .admin-form-input:disabled {
@@ -1690,7 +1710,9 @@ select.admin-form-input {
   border-radius: 999px;
   background: rgba(103, 120, 111, 0.24);
   box-shadow: inset 0 1px 2px rgba(20, 48, 37, 0.08);
-  transition: background 0.18s ease, border-color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
 }
 .shop-location-toggle > span::after {
   position: absolute;
@@ -1797,4 +1819,155 @@ select.admin-form-input {
   .shop-shell-tools {
     margin-left: 0;
   }
+}
+
+/* ---------- Admin semantic theme bindings -------------------------------
+   Keep these scoped to the admin shell. Pages still own their layout, but all
+   shared chrome and recurring states consume the same theme roles. */
+.shop-shell {
+  --admin-page-gradient: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--admin-surface-soft) 82%, white),
+    color-mix(in srgb, var(--admin-surface-page) 92%, var(--admin-surface-soft))
+  );
+  color: var(--admin-text-primary);
+  background: var(--admin-page-gradient);
+}
+.shop-shell-sidebar,
+.shop-shell-topbar,
+.shop-shell-bottomnav {
+  border-color: color-mix(in srgb, var(--admin-border) 72%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--admin-surface-page) 72%,
+    transparent
+  );
+}
+.shop-shell-back,
+.shop-shell-nav-item,
+.shop-shell-topbar,
+.shop-shell-topbar .shop-shell-back-label,
+.shop-shell-context,
+.shop-shell-search,
+.shop-shell-search-input {
+  color: var(--admin-text-secondary);
+}
+.shop-shell-nav-item.active,
+.shop-shell-topnav .admin-dock-item.active,
+.shop-shell-avatar,
+.shop-logo-sm {
+  background-color: var(--liquid-active-background);
+  color: var(--admin-brand-strong);
+}
+.shop-shell-nav-item:hover,
+.shop-shell-back:hover,
+.shop-shell-topnav .admin-dock-item:hover,
+.shop-shell-search:focus-within {
+  background-color: var(--liquid-hover-background);
+  color: var(--admin-brand-strong);
+}
+.shop-shell-brand-link:focus-visible,
+.shop-shell-back:focus-visible,
+.shop-shell-nav-item:focus-visible,
+.shop-shell-bottomnav-item:focus-visible,
+.admin-dock-item:focus-visible,
+.shop-shell-avatar:focus-visible {
+  outline-color: var(--color-focus-ring);
+}
+.kpi-label,
+.sales-bar-label,
+.shop-promo-body p,
+.shop-shell-footer-note,
+.shop-shell-search-input::placeholder,
+.admin-form-input::placeholder {
+  color: var(--admin-text-muted);
+}
+.kpi-value,
+.shop-item-name,
+.stock-item-name,
+.shop-location-heading h2,
+.shop-location-schedule-row strong {
+  color: var(--admin-text-primary);
+}
+.kpi-card-warn .kpi-value,
+.shop-rating,
+.low-stock-qty,
+.stock-status-low,
+.shop-location-schedule-remove {
+  color: var(--admin-warning);
+}
+.sales-bar-fill,
+.shop-toggle[aria-pressed="true"],
+.shop-location-live-dot {
+  background-color: var(--admin-success);
+}
+.shop-open-admin,
+.shop-add-action,
+.shop-location-toggle input:checked + span {
+  border-color: color-mix(in srgb, var(--admin-brand) 35%, transparent);
+  color: var(--admin-brand-strong);
+}
+.admin-form-input {
+  border-color: var(--liquid-border);
+  background-color: color-mix(
+    in srgb,
+    var(--admin-surface-highlight) 48%,
+    transparent
+  );
+  color: var(--admin-text-primary);
+}
+.admin-form-input:hover {
+  border-color: color-mix(in srgb, var(--admin-brand) 30%, transparent);
+}
+.admin-form-input:focus-visible {
+  border-color: var(--admin-brand);
+  box-shadow:
+    0 0 0 3px var(--liquid-active-background),
+    inset 0 1px 0
+      color-mix(in srgb, var(--admin-surface-highlight) 80%, transparent);
+}
+.order-status-preparing,
+.low-stock-row {
+  background: color-mix(in srgb, var(--admin-warning) 14%, transparent);
+  color: var(--admin-warning);
+}
+.order-status-ready {
+  background: color-mix(in srgb, var(--admin-info) 14%, transparent);
+  color: var(--admin-info);
+}
+.order-status-completed,
+.stock-status-ok,
+.shop-location-availability-open {
+  background: color-mix(in srgb, var(--admin-success) 14%, transparent);
+  color: var(--admin-success);
+}
+.order-status-cancelled,
+.stock-status-out,
+.shop-location-availability-closed {
+  background: color-mix(in srgb, var(--admin-danger) 14%, transparent);
+  color: var(--admin-danger);
+}
+.shop-location-availability-disabled,
+.stock-status-disabled {
+  background: color-mix(in srgb, var(--admin-text-muted) 14%, transparent);
+  color: var(--admin-text-secondary);
+}
+.shop-shell .text-slate-400,
+.shop-shell .text-slate-500 {
+  color: var(--admin-text-muted);
+}
+.shop-shell .text-slate-600,
+.shop-shell .text-slate-700 {
+  color: var(--admin-text-secondary);
+}
+.shop-shell .text-emerald-700,
+.shop-shell .text-emerald-800 {
+  color: var(--admin-brand-strong);
+}
+.shop-shell .bg-emerald-50 {
+  background-color: color-mix(in srgb, var(--admin-brand) 10%, transparent);
+}
+.shop-shell .bg-emerald-600,
+.shop-shell .bg-emerald-700 {
+  background-color: var(--admin-brand);
 }

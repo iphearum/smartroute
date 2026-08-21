@@ -1,168 +1,253 @@
-"""Streaming map copilot transport with server-owned map tools."""
+"""HTTP and SSE endpoints for the map copilot."""
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import queue
-import threading
-from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from openai import OpenAI
-from config.settings import settings
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
+from fastapi.encoders import jsonable_encoder
+
+from app.services.assistant.stream import stream_turn, system_prompt
+from app.services.assistant.sessions import create_session, list_sessions, save_session
+from app.services.assistant.tools import execute_tool
+from app.services.assistant.sse import (
+    get_stream,
+    register_stream,
+    sse,
+    unregister_stream,
+)
+from app.services.assistant.protocol import (
+    _pseudo_tool_call,
+    _user_content,
+    _visible_stream_text,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["assistant"])
-client = OpenAI(api_key=settings.ai_api_key or "local-dev-key", base_url=settings.ai_base_url, timeout=settings.ai_timeout) if settings.ai_base_url else None
 
-TOOLS = [
-    {"type": "function", "function": {"name": "search_places", "description": "Find places in the SmartRoute map.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"], "additionalProperties": False}}},
-    {"type": "function", "function": {"name": "plot_route", "description": "Plot a route when the user has provided known places and coordinates.", "parameters": {"type": "object", "properties": {"stops": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "latitude": {"type": "number"}, "longitude": {"type": "number"}}, "required": ["name", "latitude", "longitude"], "additionalProperties": False}}, "mode": {"type": "string", "enum": ["car", "motorbike", "combined", "bike", "walk"]}}, "required": ["stops"], "additionalProperties": False}}},
-]
+# Compatibility exports for existing tests and callers. The implementation now
+# lives in protocol/service modules; this route module remains the public route
+# boundary and does not duplicate those helpers.
+_execute_tool = execute_tool
 
-SYSTEM = """You are SmartRoute's map copilot. Be concise and helpful. Use search_places when the user asks to find a place. Use plot_route only when coordinates are known; never invent coordinates. After a tool result, explain the result in one short sentence. Do not expose tool names or JSON to the user."""
-STREAM_CHUNK_CHARS = 4
-STREAM_CHUNK_DELAY = 0.018
-
-async def _search(websocket: WebSocket, query: str) -> list[dict]:
-    store = getattr(websocket.app.state, "map_store", None)
-    region = getattr(websocket.app.state, "map_region", None)
-    if not store or not region:
-        return []
-    return [{**place, "node_id": None, "source": "custom_place"} for place in await store.search_places(*region, query, 8)]
-
-def _stream_in_thread(messages: list[dict[str, Any]], output: queue.Queue) -> None:
-    try:
-        if client is None:
-            output.put(("error", "AI assistant is not configured yet."))
-            return
-        stream = client.chat.completions.create(model=settings.ai_model, messages=messages, temperature=0.2, tools=TOOLS, tool_choice="auto", stream=True)
-        for chunk in stream:
-            choice = chunk.choices[0] if chunk.choices else None
-            if not choice:
-                continue
-            delta = choice.delta
-            output.put(("delta", delta.content or "", [call.model_dump() for call in (delta.tool_calls or [])], choice.finish_reason))
-    except Exception as exc:
-        output.put(("error", str(exc)))
-    finally:
-        output.put(("end", None))
-
-async def _stream_turn(websocket: WebSocket, messages: list[dict[str, Any]], message_id: str) -> tuple[str, dict | None]:
-    output: queue.Queue = queue.Queue()
-    threading.Thread(target=_stream_in_thread, args=(messages, output), daemon=True).start()
-    text = ""
-    calls: dict[int, dict[str, str]] = {}
-    while True:
-        item = await asyncio.to_thread(output.get)
-        kind = item[0]
-        if kind == "end":
-            break
-        if kind == "error":
-            raise RuntimeError(item[1])
-        _, delta, tool_deltas, _finish = item
-        if delta:
-            for offset in range(0, len(delta), STREAM_CHUNK_CHARS):
-                piece = delta[offset : offset + STREAM_CHUNK_CHARS]
-                text += piece
-                await websocket.send_json({"type": "assistant.delta", "id": message_id, "data": {"text": piece}})
-                await asyncio.sleep(STREAM_CHUNK_DELAY)
-        for tool_delta in tool_deltas:
-            index = int(tool_delta.get("index", 0))
-            call = calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
-            call["id"] += tool_delta.get("id") or ""
-            function = tool_delta.get("function") or {}
-            call["name"] += function.get("name") or ""
-            call["arguments"] += function.get("arguments") or ""
-    action = None
-    if calls:
-        tool_call_messages = [{"id": call["id"], "type": "function", "function": {"name": call["name"], "arguments": call["arguments"]}} for call in calls.values()]
-        messages.append({"role": "assistant", "content": text or None, "tool_calls": tool_call_messages})
-        for call in calls.values():
-            try:
-                args = json.loads(call["arguments"] or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            if call["name"] == "search_places":
-                query = str(args.get("query", ""))[:200]
-                results = await _search(websocket, query)
-                action = {"type": "search", "query": query, "results": results}
-                result = {"results": results}
-            elif call["name"] == "plot_route":
-                stops = args.get("stops", [])
-                action = {"type": "route", "stops": stops, "mode": args.get("mode")}
-                result = {"accepted": True, "stops": stops}
-            else:
-                result = {"error": "Unsupported map tool"}
-            messages.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)})
-        await websocket.send_json({"type": "assistant.status", "id": message_id, "data": {"text": "Updating the map…"}})
-        follow_up, follow_action = await _stream_turn_no_tools(websocket, messages, message_id)
-        text = follow_up or text
-        action = action or follow_action
-    return text, action
-
-async def _stream_turn_no_tools(websocket: WebSocket, messages: list[dict[str, Any]], message_id: str) -> tuple[str, dict | None]:
-    output: queue.Queue = queue.Queue()
-    def produce() -> None:
-        try:
-            stream = client.chat.completions.create(model=settings.ai_model, messages=messages, temperature=0.2, stream=True) if client else None
-            if stream:
-                for chunk in stream:
-                    choice = chunk.choices[0] if chunk.choices else None
-                    if choice and choice.delta.content:
-                        output.put(("delta", choice.delta.content))
-        except Exception as exc:
-            output.put(("error", str(exc)))
-        finally:
-            output.put(("end", None))
-    threading.Thread(target=produce, daemon=True).start()
-    text = ""
-    while True:
-        kind, value = await asyncio.to_thread(output.get)
-        if kind == "end": break
-        if kind == "error": raise RuntimeError(value)
-        for offset in range(0, len(value), STREAM_CHUNK_CHARS):
-            piece = value[offset : offset + STREAM_CHUNK_CHARS]
-            text += piece
-            await websocket.send_json({"type": "assistant.delta", "id": message_id, "data": {"text": piece}})
-            await asyncio.sleep(STREAM_CHUNK_DELAY)
-    return text, None
 
 @router.websocket("/ws/assistant")
 async def assistant_socket(websocket: WebSocket):
+    """Compatibility transport for clients that cannot consume SSE reliably."""
     await websocket.accept()
-    await websocket.send_json({"type": "connection.ready", "occurredAt": datetime.now(timezone.utc).isoformat()})
-    history: list[dict[str, Any]] = []
     try:
         while True:
-            frame = await websocket.receive_json()
-            if frame.get("type") == "chat.history":
-                incoming = frame.get("messages", [])
-                if isinstance(incoming, list):
-                    history = [
-                        {"role": item["role"], "content": str(item["text"])[:4000]}
-                        for item in incoming[-16:]
-                        if isinstance(item, dict)
-                        and item.get("role") in {"user", "assistant"}
-                        and isinstance(item.get("text"), str)
-                        and item["text"].strip()
-                    ]
-                await websocket.send_json({"type": "history.ready", "count": len(history)})
+            payload = await websocket.receive_json()
+            if payload.get("type") != "chat.message":
                 continue
-            if frame.get("type") != "chat.message": continue
-            text = str(frame.get("text", "")).strip()[:4000]
-            if not text: continue
-            message_id = str(frame.get("clientId", "assistant-message"))
-            await websocket.send_json({"type": "assistant.start", "id": message_id})
-            messages = [{"role": "system", "content": SYSTEM}, *history[-8:], {"role": "user", "content": text}]
+
+            client_id = str(payload.get("clientId", "")).strip()
+            text = str(payload.get("text", "")).strip()[:4000]
+            if not client_id or not text:
+                await websocket.send_json(
+                    {
+                        "type": "assistant.error",
+                        "id": client_id,
+                        "data": {"message": "clientId and text are required"},
+                    }
+                )
+                continue
+
+            language = payload.get("language") if payload.get("language") in {"en", "km"} else "en"
+            thinking = payload.get("thinking") is True
+            messages = [
+                {"role": "system", "content": system_prompt(language, thinking=thinking)},
+                *_stream_history(payload.get("messages")),
+                {"role": "user", "content": _user_content(text, payload.get("attachments"))},
+            ]
             try:
-                reply, action = await _stream_turn(websocket, messages, message_id)
-            except Exception as exc:
-                logger.warning("AI stream failed: %s", exc)
-                reply, action = "The map copilot is temporarily unavailable. You can still use search and routing directly.", None
-            history.extend([{"role": "user", "content": text}, {"role": "assistant", "content": reply}])
-            await websocket.send_json({"type": "assistant.done", "id": message_id, "data": {"message": reply, "action": action}})
+                reply, action = await stream_turn(websocket, messages, client_id, thinking=thinking)
+                await websocket.send_json(
+                    {
+                        "type": "assistant.done",
+                        "id": client_id,
+                        "data": {"message": reply, "action": action},
+                    }
+                )
+            except Exception:
+                logger.exception("Assistant stream failed")
+                await websocket.send_json(
+                    {
+                        "type": "assistant.done",
+                        "id": client_id,
+                        "data": {
+                            "message": "The map copilot is temporarily unavailable.",
+                            "action": None,
+                        },
+                    }
+                )
     except WebSocketDisconnect:
-        return
+        logger.debug("Assistant disconnected")
+
+
+def _owner_key(value: Any) -> str:
+    key = str(value or "").strip()
+    if len(key) < 16 or len(key) > 128:
+        raise HTTPException(status_code=422, detail="clientKey must be 16-128 characters")
+    return key
+
+
+def _session_resource(session) -> dict[str, Any]:
+    return {
+        "id": session.id,
+        "title": session.title,
+        "messages": session.messages,
+        "createdAt": session.created_at,
+        "updatedAt": session.updated_at,
+        "expiresAt": session.expires_at,
+    }
+
+
+@router.get("/assistant/sessions")
+async def get_assistant_sessions(clientKey: str):
+    return {"sessions": jsonable_encoder([_session_resource(item) for item in await list_sessions(_owner_key(clientKey))])}
+
+
+@router.post("/assistant/sessions")
+async def create_assistant_session(payload: dict[str, Any]):
+    session = await create_session(
+        _owner_key(payload.get("clientKey")),
+        str(payload.get("title", "New chat")),
+        payload.get("messages", []),
+    )
+    return jsonable_encoder(_session_resource(session))
+
+
+@router.put("/assistant/sessions/{session_id}")
+async def update_assistant_session(session_id: str, payload: dict[str, Any]):
+    from app.models.assistant import AssistantSession
+
+    session = await AssistantSession.get_or_none(id=session_id, owner_key=_owner_key(payload.get("clientKey")))
+    if session is None:
+        raise HTTPException(status_code=404, detail="Assistant session not found")
+    return jsonable_encoder(_session_resource(await save_session(
+        session,
+        str(payload.get("title", session.title)),
+        payload.get("messages", []),
+    )))
+
+
+@router.post("/assistant/tools/execute")
+async def execute_assistant_tool(payload: dict[str, Any], request: Request):
+    name = payload.get("name")
+    args = payload.get("arguments", {})
+    if not isinstance(name, str) or not isinstance(args, dict):
+        raise HTTPException(status_code=422, detail="name and arguments are required")
+    return jsonable_encoder(await execute_tool(request.app, name, args))
+
+
+@router.post("/assistant/speech/chunk")
+async def synthesize_assistant_speech(payload: dict[str, Any]):
+    """Return one small MP3 chunk for frontend queue playback."""
+    import asyncio
+
+    from app.services.assistant.speech import detect_language, synthesize_chunk
+
+    text = str(payload.get("text", "")).strip()[:280]
+    if not text:
+        raise HTTPException(status_code=422, detail="text is required")
+    requested_language = payload.get("language")
+    language = requested_language if requested_language in {"en", "km"} else detect_language(text)
+    try:
+        audio = await asyncio.to_thread(synthesize_chunk, text, language)
+    except Exception as exc:
+        logger.exception("Assistant speech synthesis failed")
+        raise HTTPException(status_code=502, detail="Speech synthesis is temporarily unavailable") from exc
+    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+
+def _stream_history(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    return [
+        {"role": item["role"], "content": str(item["text"])[:4000]}
+        for item in value[-8:]
+        if isinstance(item, dict)
+        and item.get("role") in {"user", "assistant"}
+        and isinstance(item.get("text"), str)
+        and item["text"].strip()
+    ]
+
+
+@router.post("/assistant/chat/stream")
+async def stream_assistant_chat(payload: dict[str, Any]):
+    """Stream normalized reasoning/content/tool/usage/done SSE events."""
+    stream_id = str(payload.get("streamId") or payload.get("clientId") or "").strip()
+    if not stream_id or len(stream_id) > 128:
+        raise HTTPException(status_code=422, detail="streamId is required")
+    text = str(payload.get("text", "")).strip()[:4000]
+    if not text:
+        raise HTTPException(status_code=422, detail="text is required")
+    language = payload.get("language") if payload.get("language") in {"en", "km"} else "en"
+    thinking = payload.get("thinking") is True
+    history = _stream_history(payload.get("messages"))
+    transport = register_stream(stream_id)
+
+    async def generate():
+        task: asyncio.Task | None = None
+        try:
+            messages = [
+                {"role": "system", "content": system_prompt(language, thinking=thinking)},
+                *history,
+                {"role": "user", "content": _user_content(text, payload.get("attachments"))},
+            ]
+            task = asyncio.create_task(
+                stream_turn(transport, messages, stream_id, thinking=thinking)
+            )
+            while not task.done() or not transport.events.empty():
+                try:
+                    event = await asyncio.wait_for(transport.events.get(), timeout=0.25)
+                except asyncio.TimeoutError:
+                    continue
+                yield sse(event.pop("type"), event)
+            reply, action = await task
+            yield sse("done", {"message": reply, "action": action})
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Assistant SSE stream failed")
+            yield sse(
+                "done",
+                {
+                    "message": "The map copilot is temporarily unavailable. You can still use search and routing directly.",
+                    "action": None,
+                },
+            )
+        finally:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            unregister_stream(stream_id)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/assistant/chat/stream/{stream_id}/tool-result")
+async def submit_assistant_tool_result(stream_id: str, payload: dict[str, Any]):
+    transport = get_stream(stream_id)
+    tool_call_id = str(payload.get("toolCallId", "")).strip()
+    result = payload.get("result")
+    if transport is None:
+        raise HTTPException(status_code=404, detail="Assistant stream not found")
+    if not tool_call_id or not isinstance(result, dict):
+        raise HTTPException(status_code=422, detail="toolCallId and result are required")
+    await transport.submit_tool_result(tool_call_id, result)
+    return {"accepted": True}
